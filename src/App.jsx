@@ -523,7 +523,7 @@ function FighterGame() {
         name: data.name,
         type: data.type,
         speed: 5,
-        jumpPower: facing === 1 ? -22 : -20,
+        jumpPower: -22,
         grounded: true,
         facing,
         attacking: false,
