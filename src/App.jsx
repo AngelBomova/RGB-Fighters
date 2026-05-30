@@ -22,6 +22,23 @@ function FighterGame() {
   const [ladderOppOrder, setLadderOppOrder] = useState([]);
 
   const canvasRef = useRef(null);
+
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+const toggleFullscreen = async () => {
+  try {
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      await document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  } catch (err) {
+    console.error("Fullscreen failed:", err);
+  }
+};
+
   const loopRef = useRef(null);
   const runningRef = useRef(false);
   const runTokenRef = useRef(0);
@@ -122,6 +139,22 @@ function FighterGame() {
       localStorage.setItem("rgb_fighters_keybinds_p1_v3", JSON.stringify(p1Binds));
     } catch {}
   }, [p1Binds]);
+
+  useEffect(() => {
+  const onFullscreenChange = () => {
+    setIsFullscreen(!!document.fullscreenElement);
+    viewportRef.current = {
+      w: window.innerWidth,
+      h: window.innerHeight,
+    };
+  };
+
+  document.addEventListener("fullscreenchange", onFullscreenChange);
+
+  return () => {
+    document.removeEventListener("fullscreenchange", onFullscreenChange);
+  };
+}, []);
 
   useEffect(() => {
     p2BindsRef.current = p2Binds;
@@ -2063,20 +2096,16 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
 
-      const padding = 90;
-      let scale = Math.min((WIDTH - padding * 2) / WORLD_W, (HEIGHT - padding * 2) / WORLD_H);
-      scale = Math.min(scale, 1.25);
-      scale = Math.max(scale, 0.85);
+      const padding = 0;
+      let scale = Math.min(WIDTH / WORLD_W, HEIGHT / WORLD_H);
 
       const offsetX = (WIDTH - WORLD_W * scale) / 2;
       const offsetY = (HEIGHT - WORLD_H * scale) / 2;
 
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
-      ctx.fillStyle = "#F9E4BC";
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-      ctx.fillStyle = "rgba(243,244,246,0.85)";
-      ctx.fillRect(offsetX - 18, offsetY - 18, WORLD_W * scale + 36, WORLD_H * scale + 36);
+      ctx.fillStyle = "#020617";
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
       ctx.save();
       ctx.beginPath();
@@ -2437,6 +2466,14 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
             >
               Return to Home
             </button>
+            <button
+  onClick={toggleFullscreen}
+  className="bg-white/80 backdrop-blur border border-gray-200 rounded-2xl px-5 py-3 hover:bg-white transition"
+>
+  <span className="text-sm text-gray-800 font-light">
+    {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+  </span>
+</button>
           </div>
 
           <div className="mt-4 text-xs text-gray-500 font-light">Tip: Opening settings pauses gameplay (and the timer).</div>
@@ -2780,9 +2817,14 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
               <button
                 key={s.key}
                 onClick={() => {
-                  setStage(s.key);
-                  setManagedTimeout(() => proceedAfterStage(), 0);
-                }}
+  setStage(s.key);
+
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  }
+
+  setManagedTimeout(() => proceedAfterStage(), 0);
+}}
                 className="p-10 bg-white border border-gray-100 rounded-2xl hover:scale-[0.98] active:scale-95 transition-all duration-150"
                 style={{ boxShadow: "0 10px 30px rgba(0, 0, 0, 0.05)" }}
               >
@@ -2869,6 +2911,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
               <span className="text-sm text-gray-800 font-light">Refresh</span>
             </button>
           )}
+          
 
           {ladderLabel && <div className="bg-white/80 backdrop-blur border border-gray-200 rounded-2xl px-4 py-3 text-sm font-light text-gray-800">{ladderLabel}</div>}
         </div>
@@ -2898,7 +2941,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   Home
                 </button>
               </div>
-
+                
               {mode === "practice" && <div className="mt-4 text-xs text-gray-500 font-light">Tip: Use Refresh to reset positions and bring the dummy back after a KO.</div>}
             </div>
           </div>
