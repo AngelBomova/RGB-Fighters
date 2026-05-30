@@ -2408,7 +2408,7 @@ function FighterGame() {
       <Layout>
         <div className="bg-white rounded-3xl p-16 text-center max-w-6xl border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
           <h1 className="text-6xl font-light text-gray-900 mb-4">RGB Fighters</h1>
-          <p className="text-4xl font-light text-gray-500 mb-12">Choose a Mode</p>
+          <p className="text-4xl font-light text-gray-500 mb-12 ">Choose a Mode</p>
 
           <div className="grid grid-cols-3 gap-6">
             {[
