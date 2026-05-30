@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(\\(Get-Content \"c:\\\\Users\\\\Angel\\\\Desktop\\\\Coding Projects\\\\Old\\\\Winter2026Test\\\\rgb-fighters\\\\src\\\\App.jsx\"\\).Count)"
+    ]
+  }
+}
