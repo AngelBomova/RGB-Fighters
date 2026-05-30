@@ -2464,14 +2464,14 @@ function FighterGame() {
           <h1 className="text-6xl font-light text-gray-900 mb-4">Choose Player 1</h1>
           <p className="text-xl font-light text-gray-500 mb-10">
             {mode === "practice"
-              ? "Practice — pick your fighter"
+              ? "Practice — Pick your fighter"
               : mode === "single"
-              ? "Single Player — pick your fighter"
+              ? "Single Player — Pick your fighter"
               : mode === "offline"
-              ? "Offline 1v1 — pick P1 fighter"
+              ? "Offline 1v1 — Pick P1 fighter"
               : mode === "coop"
-              ? "2v2 — pick P1 fighter"
-              : "Ladder — pick your fighter"}
+              ? "2v2 — Pick P1 fighter"
+              : "Ladder — Pick your fighter"}
           </p>
 
           <div className="grid grid-cols-4 gap-6">
@@ -2504,9 +2504,9 @@ function FighterGame() {
   }
 
   if (menuStep === "opp1") {
-    const title = mode === "practice" ? "Choose Dummy Color" : mode === "coop" ? "Choose Enemy 1" : "Choose Opponent";
+    const title = mode === "practice" ? "Choose Dummy Color" : mode === "coop" ? "Choose Opponent 1" : "Choose Opponent";
     const subtitle =
-      mode === "practice" ? "Dummy doesn’t fight back. 100 HP, (use Refresh to bring it back)." : "Mirror matches allowed.";
+      mode === "practice" ? "Dummy doesn’t fight back. 100 HP, (use Refresh to bring it back)." : "Pick AI Fighter";
 
     return (
       <Layout>
@@ -2548,8 +2548,8 @@ function FighterGame() {
     return (
       <Layout>
         <div className="bg-white rounded-3xl p-16 text-center max-w-6xl border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
-          <h1 className="text-6xl font-light text-gray-900 mb-4">Choose Enemy 2</h1>
-          <p className="text-xl font-light text-gray-500 mb-10">Pick the second AI opponent.</p>
+          <h1 className="text-6xl font-light text-gray-900 mb-4">Choose Opponent 2</h1>
+          <p className="text-xl font-light text-gray-500 mb-10">Pick the AI Fighter 2</p>
 
           <div className="grid grid-cols-4 gap-6">
             {["red", "blue", "green", "black"].map((c) => (
@@ -2585,7 +2585,7 @@ function FighterGame() {
       <Layout>
         <div className="bg-white rounded-3xl p-16 text-center max-w-6xl border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
           <h1 className="text-6xl font-light text-gray-900 mb-4">Choose Player 2</h1>
-          <p className="text-xl font-light text-gray-500 mb-10">{mode === "offline" ? "Offline 1v1 — P2 is your opponent (local PvP)" : "2v2 — P2 is your teammate (local co-op)"}</p>
+          <p className="text-xl font-light text-gray-500 mb-10">{mode === "offline" ? "Offline 1v1 — Pick P2 Fighter" : "2v2 — Pick P2 Fighter"}</p>
 
           <div className="grid grid-cols-4 gap-6">
             {["red", "blue", "green", "black"].map((c) => (
@@ -2621,7 +2621,7 @@ function FighterGame() {
       <Layout>
         <div className="bg-white rounded-3xl p-16 text-center max-w-3xl border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
           <h1 className="text-5xl font-light text-gray-900 mb-4">Select Difficulty</h1>
-          <p className="text-lg font-light text-gray-500 mb-12">{mode === "ladder" ? "Ladder scales automatically; this sets your base AI." : "Choose AI Challenge Level"}</p>
+          <p className="text-lg font-light text-gray-500 mb-12">{mode === "ladder" ? "Choose your difficulty level." : ""}</p>
 
           <div className="space-y-4">
             {[
