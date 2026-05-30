@@ -2191,7 +2191,7 @@ function FighterGame() {
       if (mode === "practice") {
         ctx.fillStyle = "rgba(17,24,39,0.75)";
         ctx.font = "12px Arial";
-        ctx.fillText("Practice: Dummy has 100 HP, takes knockback/launch, and disappears on KO. Use Refresh to bring it back.", 18, WORLD_H - 18);
+        // ctx.fillText("Practice: Dummy has 100 HP, takes knockback/launch, and disappears on KO. Use Refresh to bring it back.", 18, WORLD_H - 18);
       }
 
       if (roundPhaseRef.current === "countdown") {
