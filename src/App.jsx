@@ -474,7 +474,7 @@ function FighterGame() {
         }
       })();
       const hex = variant === "dark" ? DARK_VARIANT[color] || base.hex : base.hex;
-      return { ...base, hex, light: toRGBA(hex, 0.4) };
+      return { ...base, hex, light: toRGBA(hex, 0.75) };
     };
 
     const difficultySettings = {
@@ -557,6 +557,8 @@ function FighterGame() {
         sweepCooldown: 0,
         hitstun: false,
         hitstunTimer: 0,
+        hitFlashTimer: 0,
+        hitFlashColor: "rgba(255,255,255,0.9)",
         hitbox: { x: 0, y: 0, width: 0, height: 0 },
         hurtbox: { x: 0, y: 0, width: 40, height: 60 },
         aiTimer: 0,
@@ -937,6 +939,10 @@ function FighterGame() {
       }
 
       defender.health -= damage;
+      if (!blocked && damage > 0) {
+        defender.hitFlashTimer = 14;
+      defender.hitFlashColor = attacker.lightColor || attacker.color || "rgba(255,255,255,0.9)";
+      }
 
       const dir = extra.knockbackDir ?? attacker.facing ?? 1;
       defender.vx = dir * knockback;
@@ -1218,10 +1224,10 @@ function FighterGame() {
       const barH = 16;
       const boxH = 60;
 
-      ctx.fillStyle = "rgba(255,255,255,0.88)";
+      ctx.fillStyle = "rgba(255,255,255,0.92)";
       ctx.fillRect(x, y, barW, boxH);
-      ctx.strokeStyle = "rgba(17,24,39,0.18)";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#000000";
+      ctx.lineWidth = 3;
       ctx.strokeRect(x, y, barW, boxH);
 
       ctx.fillStyle = "#111827";
@@ -1231,19 +1237,35 @@ function FighterGame() {
       ctx.fillText(hpText, alignRight ? x + barW - 10 - tw : x + 10, y + 16);
 
       ctx.fillStyle = "#e5e7eb";
-      ctx.fillRect(x + 10, y + 24, barW - 20, barH);
+ctx.fillRect(x + 10, y + 24, barW - 20, barH);
+ctx.strokeStyle = "#000000";
+ctx.lineWidth = 2;
+ctx.strokeRect(x + 10, y + 24, barW - 20, barH);
 
-      const hpW = ((Math.max(0, Math.min(100, health)) / 100) * (barW - 20)) | 0;
-      ctx.fillStyle = color;
-      ctx.fillRect(x + 10, y + 24, hpW, barH);
+const hpW = ((Math.max(0, Math.min(100, health)) / 100) * (barW - 20)) | 0;
+ctx.fillStyle = color;
+ctx.fillRect(x + 10, y + 24, hpW, barH);
+
+if (hpW > 0) {
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x + 10, y + 24, hpW, barH);
+}
 
       if (roundsWon != null) {
         for (let i = 0; i < 2; i++) {
-          ctx.fillStyle = i < roundsWon ? "#fbbf24" : "#e5e7eb";
-          ctx.beginPath();
-          ctx.arc(x + barW - 16 - i * 16, y + 50, 5, 0, Math.PI * 2);
-          ctx.fill();
-        }
+  const coinX = x + barW - 16 - i * 16;
+  const coinY = y + 50;
+
+  ctx.fillStyle = i < roundsWon ? "#fbbf24" : "#e5e7eb";
+  ctx.beginPath();
+  ctx.arc(coinX, coinY, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
       }
     };
 
@@ -1253,11 +1275,11 @@ function FighterGame() {
       const x = WORLD_W / 2 - boxW / 2;
       const y = 18;
 
-      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.fillStyle = "rgba(255,255,255,0.92)";
       ctx.fillRect(x, y, boxW, boxH);
 
-      ctx.strokeStyle = "rgba(17,24,39,0.25)";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#000000";
+      ctx.lineWidth = 3;
       ctx.strokeRect(x, y, boxW, boxH);
 
       ctx.fillStyle = "#111827";
@@ -1665,13 +1687,15 @@ function FighterGame() {
 
     const updatePerFrame = (p) => {
       if (!p.alive) return;
-
+      
       if (p.punchCooldown > 0) p.punchCooldown--;
       if (p.kickCooldown > 0) p.kickCooldown--;
       if (p.upperCooldown > 0) p.upperCooldown--;
       if (p.sweepCooldown > 0) p.sweepCooldown--;
 
       if (p.charging) p.chargeFrames++;
+
+      if (p.hitFlashTimer > 0) p.hitFlashTimer--;
 
       if (p.blockDisabled) {
         p.blockDisabledTimer--;
@@ -1944,23 +1968,50 @@ function FighterGame() {
         ctx.globalAlpha = 1;
       }
 
-      if (p.hitstun && p.hitstunTimer % 4 < 2) ctx.globalAlpha = 0.6;
+      if (p.hitFlashTimer > 0) {
+  ctx.save();
 
-      ctx.fillStyle = p.color;
-      ctx.fillRect(p.x, drawY, p.width, drawHeight);
+  ctx.globalAlpha = p.hitFlashTimer % 4 < 2 ? 0.95 : 0.65;
+  ctx.fillStyle = p.hitFlashColor;
+  ctx.fillRect(p.x - 8, drawY - 8, p.width + 16, drawHeight + 16);
 
-      ctx.strokeStyle = "rgba(0,0,0,0.3)";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(p.x, drawY, p.width, drawHeight);
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(p.x - 8, drawY - 8, p.width + 16, drawHeight + 16);
+
+  ctx.restore();
+}
+
+ctx.fillStyle = p.color;
+ctx.fillRect(p.x, drawY, p.width, drawHeight);
+
+// Strong black outline
+ctx.strokeStyle = "#000000";
+ctx.lineWidth = 4;
+ctx.strokeRect(p.x - 1, drawY - 1, p.width + 2, drawHeight + 2);
+
+// Small inner outline so the body still looks pixel-art
+ctx.strokeStyle = "rgba(255,255,255,0.35)";
+ctx.lineWidth = 1;
+ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
       ctx.fillStyle = "rgba(0,0,0,0.4)";
       const faceX = p.facing > 0 ? p.x + p.width - 10 : p.x + 2;
       ctx.fillRect(faceX, drawY + 15, 8, 8);
 
       if (p.attacking && p.hitbox.width > 0) {
-        ctx.fillStyle = p.lightColor;
-        ctx.fillRect(p.hitbox.x, p.hitbox.y, p.hitbox.width, p.hitbox.height);
-      }
+  ctx.save();
+
+  ctx.globalAlpha = 0.85;
+  ctx.fillStyle = p.lightColor;
+  ctx.fillRect(p.hitbox.x, p.hitbox.y, p.hitbox.width, p.hitbox.height);
+
+  ctx.strokeStyle = "#111827";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(p.hitbox.x, p.hitbox.y, p.hitbox.width, p.hitbox.height);
+
+  ctx.restore();
+}
 
       if (p.blocking) {
         ctx.strokeStyle = "rgba(251,191,36,0.95)";
