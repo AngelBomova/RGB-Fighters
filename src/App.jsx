@@ -2219,6 +2219,31 @@ function FighterGame() {
     };
   }, [tailwindLoaded, menuStep, gameConfig, gameOver, team1Rounds, team2Rounds, mode]);
 
+  useEffect(() => {
+  if (menuStep !== "playing") return;
+  if (!gameOver) return;
+  if (matchWinnerText) return;
+
+  const id = window.setTimeout(() => {
+    setGameOver(false);
+    setRoundWinnerText(null);
+
+    keysPressed.current = {};
+    projectiles.current = [];
+
+    roundMsRemainingRef.current = null;
+    lastShownSecondRef.current = null;
+    setRoundTime(null);
+
+    setRoundPhase("countdown");
+    setCountdownValue(3);
+    roundPhaseRef.current = "countdown";
+    countdownRef.current = 3;
+  }, 1200);
+
+  return () => window.clearTimeout(id);
+}, [gameOver, matchWinnerText, menuStep]);
+
   if (!tailwindLoaded) return <div style={{ padding: 20, textAlign: "center" }}>Loading…</div>;
 
   const GlobalSettingsButton = () => (
@@ -2778,18 +2803,9 @@ function FighterGame() {
 
               <div className="flex gap-3 justify-center flex-wrap">
                 {!matchWinnerText ? (
-                  <button
-                    onClick={() => {
-                      setGameOver(false);
-                      setRoundWinnerText(null);
-                      keysPressed.current = {};
-                      projectiles.current = [];
-                      primeNewRound();
-                    }}
-                    className="bg-gray-900 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition"
-                  >
-                    Next Round
-                  </button>
+                  <div className="bg-gray-900 text-white rounded-2xl px-6 py-3">
+  Next round starting...
+</div>
                 ) : mode === "ladder" ? (
                   <button onClick={onNextMatchLadder} className="bg-gray-900 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition">
                     {matchWinnerText === "Team 1" ? "Next Ladder Match" : "Ladder Failed"}
