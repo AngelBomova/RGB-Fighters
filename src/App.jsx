@@ -2415,7 +2415,7 @@ function FighterGame() {
               { key: "practice", title: "Practice", desc: "100-HP dummy (KO disappears) + Refresh button" },
               { key: "single", title: "Single Player", desc: "Fight an AI (best of 3)" },
               { key: "coop", title: "Multi Player", desc: "2v2: P1+P2 vs AI team (pick both enemies)" },
-              { key: "ladder", title: "Ladder", desc: "4 fights, all colors once, last is mirror. Random stage only." },
+              { key: "ladder", title: "Ladder", desc: "Face all the colors, and the last fight is a mirror match." },
               { key: "offline", title: "1v1 Offline", desc: "Local PvP (P1 vs P2)" },
               { key: "online", title: "1v1 Online (Coming Soon)", desc: "Not playable yet" },
             ].map((m) => {
@@ -2506,7 +2506,7 @@ function FighterGame() {
   if (menuStep === "opp1") {
     const title = mode === "practice" ? "Choose Dummy Color" : mode === "coop" ? "Choose Enemy 1" : "Choose Opponent";
     const subtitle =
-      mode === "practice" ? "Dummy doesn’t fight back. 100 HP, takes knockback/launch, disappears on KO (use Refresh to bring it back)." : "Mirror matches allowed.";
+      mode === "practice" ? "Dummy doesn’t fight back. 100 HP, (use Refresh to bring it back)." : "Mirror matches allowed.";
 
     return (
       <Layout>
@@ -2625,9 +2625,9 @@ function FighterGame() {
 
           <div className="space-y-4">
             {[
-              { name: "easy", desc: "Slower reactions, basic tactics" },
-              { name: "medium", desc: "Aggressive, uses specials often" },
-              { name: "hard", desc: "Expert AI, relentless pressure" },
+              { name: "easy", desc: "" },
+              { name: "medium", desc: "" },
+              { name: "hard", desc: "" },
             ].map(({ name, desc }) => (
               <button
                 key={name}
@@ -2821,7 +2821,7 @@ function FighterGame() {
 
           {ladderWin ? (
             <>
-              <p className="text-lg font-light text-gray-600 mb-10">You are the Ultimate RGB Fighter!.</p>
+              <p className="text-lg font-light text-gray-600 mb-10">You are the Ultimate RGB Fighter!</p>
               <button
                 onClick={() => {
                   setLadderWin(false);
@@ -2835,7 +2835,7 @@ function FighterGame() {
             </>
           ) : (
             <>
-              <p className="text-lg font-light text-gray-600 mb-10">You lost the ladder. It resets on failure.</p>
+              <p className="text-lg font-light text-gray-600 mb-10">You lost!</p>
               <div className="flex gap-3 justify-center">
                 <button
                   onClick={() => {
