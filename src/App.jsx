@@ -938,7 +938,7 @@ function FighterGame() {
 
       defender.health -= damage;
 
-      const dir = attacker.facing || 1;
+      const dir = extra.knockbackDir ?? attacker.facing ?? 1;
       defender.vx = dir * knockback;
 
       if (launchUp && !blocked) {
@@ -2157,8 +2157,7 @@ function FighterGame() {
 
                 target.health -= actualDamage;
 
-                target.vx = (proj.owner?.facing || 1) * knockback;
-
+                target.vx = (Math.sign(proj.vx) || proj.owner?.facing || 1) * knockback;
                 if (!blocked) {
                   target.hitstun = true;
                   target.hitstunTimer = Math.min(30, 10 + (proj.damage || 1));
@@ -2167,10 +2166,16 @@ function FighterGame() {
                   target.attackType = "";
                 }
               } else if (proj.type === "sloworb") {
-                applyDamage(proj.owner, target, "sloworb", { attackHeight: proj.attackHeight });
-              } else {
-                applyDamage(proj.owner, target, proj.type, { attackHeight: proj.attackHeight });
-              }
+  applyDamage(proj.owner, target, "sloworb", {
+    attackHeight: proj.attackHeight,
+    knockbackDir: Math.sign(proj.vx) || 1,
+  });
+} else {
+  applyDamage(proj.owner, target, proj.type, {
+    attackHeight: proj.attackHeight,
+    knockbackDir: Math.sign(proj.vx) || 1,
+  });
+}
 
               markKOIfNeeded(target);
 
