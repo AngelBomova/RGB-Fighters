@@ -1,3 +1,5 @@
+import background1Url from "./assets/Background1.png";
+import background2Url from "./assets/Background2.png";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 function FighterGame() {
@@ -431,6 +433,12 @@ function FighterGame() {
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
+
+    const background1 = new Image();
+    background1.src = background1Url;
+
+    const background2 = new Image();
+    background2.src = background2Url;
 
     const WORLD_W = 900;
     const WORLD_H = 500;
@@ -1839,13 +1847,28 @@ function FighterGame() {
 
     const drawPlatforms = () => {
       platforms.forEach((p) => {
-        ctx.fillStyle = "#9ca3af";
+        ctx.fillStyle = "#64748b";
         ctx.fillRect(p.x, p.y, p.width, p.height);
-        ctx.strokeStyle = "#6b7280";
+
+        ctx.strokeStyle = "#334155";
         ctx.lineWidth = 2;
         ctx.strokeRect(p.x, p.y, p.width, p.height);
-      });
+
+        ctx.fillStyle = "#cbd5e1";
+        ctx.fillRect(p.x, p.y, p.width, 4);
+     });
     };
+    
+  const drawStageBackground = () => {
+  ctx.fillStyle = "#020617";
+  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+
+  const bg = selectedStage === "recursion" ? background2 : background1;
+
+  if (bg.complete && bg.naturalWidth > 0) {
+    ctx.drawImage(bg, 0, 0, WORLD_W, WORLD_H);
+  }
+};
 
     const drawProjectile = (proj) => {
       ctx.fillStyle = proj.color;
@@ -2012,9 +2035,8 @@ function FighterGame() {
       ctx.translate(offsetX, offsetY);
       ctx.scale(scale, scale);
 
-      ctx.fillStyle = "#f9fafb";
-      ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-
+      ctx.imageSmoothingEnabled = false;
+      drawStageBackground();
       drawPlatforms();
 
       if (!paused && !gameOver && roundPhaseRef.current === "countdown") {
