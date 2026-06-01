@@ -3402,14 +3402,17 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
             if (dist < target.width / 2 + proj.radius) {
               if (target.reflecting) {
                 if (proj.type === "yellowspear" && proj.owner) proj.owner.spearLocked = false;
-                const dir = target.facing || (proj.vx < 0 ? -1 : 1);
+
+                const oldVx = proj.vx || 0;
+                const newDir = oldVx === 0 ? (target.facing || 1) : -Math.sign(oldVx);
+
                 proj.owner = target;
                 proj.team = target.team;
-                proj.x = target.x + (dir > 0 ? target.width + proj.radius + 4 : -proj.radius - 4);
+                proj.x = target.x + (newDir > 0 ? target.width + proj.radius + 4 : -proj.radius - 4);
                 proj.y = target.y + target.height / 2;
-                proj.vx = dir * Math.max(8, Math.abs(proj.vx || 8));
+                proj.vx = newDir * Math.max(8, Math.abs(oldVx) || 8);
                 proj.vy = 0;
-                proj.color = "#facc15";
+
                 handledProjectile = true;
                 break;
               }
