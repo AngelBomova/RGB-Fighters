@@ -1291,7 +1291,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
           hitstunFrames = 12;
           break;
         case "orangeball":
-          damage = 3;
+          damage = 4;
           knockback = 6;
           hitstunFrames = 10;
           break;
@@ -1593,7 +1593,7 @@ const beginProjectile = (ai) => {
       cooldown = 5000;
       playSfx("yellow_spear");
     } else if (ai.type === "explosion") {
-      [-16, 0, 16].forEach((offset) => {
+      [-32, 0, 32].forEach((offset) => {
         projectiles.current.push({
         x: projX + ai.facing * (offset + 18),
         y: projY,
@@ -2812,7 +2812,7 @@ if (hpW > 0) {
             playSfx("yellow_spear");
             cooldown = 5000;
           } else if (p.type === "explosion") {
-            [-16, 0, 16].forEach((offset) => {
+            [-32, 0, 32].forEach((offset) => {
               projectiles.current.push({ x: projX + p.facing * (offset + 18), y: projY, vx: p.facing * 8, owner: p, team: p.team, type: "orangeball", attackHeight: "high", color: "#f97316", radius: 8 });
             });
             playSfx("orange_triple");
