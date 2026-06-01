@@ -1,6 +1,9 @@
 import background1Url from "./assets/Background1.png";
 import background2Url from "./assets/Background2.png";
 import background3Url from "./assets/Background3.png";
+import background4Url from "./assets/Background4.png";
+import background5Url from "./assets/Background5.png";
+import homepageUrl from "./assets/homepage.png";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 function FighterGame() {
@@ -333,10 +336,12 @@ const toggleFullscreen = async () => {
   }, []);
 
   useEffect(() => {
-    document.body.style.background = "#F9E4BC";
+    document.body.style.background = "#020617";
+    document.documentElement.style.background = "#020617";
     document.documentElement.style.minHeight = "100%";
     return () => {
       document.body.style.background = "";
+      document.documentElement.style.background = "";
       document.documentElement.style.minHeight = "";
     };
   }, []);
@@ -360,7 +365,7 @@ const toggleFullscreen = async () => {
   }, [countdownValue]);
 
   const randPick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-  const randStage = () => randPick(["default", "recursion", "sky"]);
+  const randStage = () => randPick(["default", "recursion", "sky", "hourglass", "bottom"]);
   const FIGHTER_COLORS = ["red", "blue", "green", "black", "white", "purple", "yellow", "orange"];
   const randColor = () => randPick(FIGHTER_COLORS);
   const fighterNote = (c) =>
@@ -598,12 +603,20 @@ const toggleFullscreen = async () => {
     const background3 = new Image();
     background3.src = background3Url;
 
+    const background4 = new Image();
+    background4.src = background4Url;
+
+    const background5 = new Image();
+    background5.src = background5Url;
+
     const WORLD_W = 900;
     const WORLD_H = 500;
 
     const GROUND = 380;
     const RECURSION_GROUND = 460;
     const SKY_GROUND = 405;
+    const HOURGLASS_GROUND = 430;
+    const BOTTOM_GROUND = 430;
     const GRAVITY = 1.2;
     const JUMP_DISTANCE = 120;
 
@@ -707,7 +720,11 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
         ? GROUND
         : selectedStage === "recursion"
         ? RECURSION_GROUND
-        : SKY_GROUND;
+        : selectedStage === "sky"
+        ? SKY_GROUND
+        : selectedStage === "hourglass"
+        ? HOURGLASS_GROUND
+        : BOTTOM_GROUND;
 
     const platforms =
       selectedStage === "default"
@@ -723,11 +740,29 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
             { x: 337.5, y: RECURSION_GROUND - JUMP_DISTANCE * 2, width: 225, height: 20 },
             { x: 393.75, y: RECURSION_GROUND - JUMP_DISTANCE * 3, width: 112.5, height: 20 },
           ]
-        : [
+        : selectedStage === "sky"
+        ? [
             { x: 0, y: SKY_GROUND, width: WORLD_W, height: 20 },
             { x: 35, y: 285, width: 220, height: 20 },
             { x: 615, y: 255, width: 250, height: 20 },
             { x: 335, y: 135, width: 230, height: 20 },
+          ]
+        : selectedStage === "hourglass"
+        ? [
+            { x: 0, y: HOURGLASS_GROUND, width: WORLD_W, height: 20 },
+            { x: 70, y: 315, width: 230, height: 20 },
+            { x: 600, y: 315, width: 230, height: 20 },
+            { x: 360, y: 235, width: 180, height: 20 },
+            { x: 115, y: 145, width: 190, height: 20 },
+            { x: 595, y: 145, width: 190, height: 20 },
+          ]
+        : [
+            { x: 0, y: BOTTOM_GROUND, width: WORLD_W, height: 20 },
+            { x: 65, y: 330, width: 180, height: 20 },
+            { x: 660, y: 310, width: 180, height: 20 },
+            { x: 330, y: 265, width: 240, height: 20 },
+            { x: 145, y: 190, width: 170, height: 20 },
+            { x: 585, y: 165, width: 170, height: 20 },
           ];
 
     const makeFighter = (opts) => {
@@ -1593,7 +1628,7 @@ const beginPurplePowerUp = (ai) => {
 
   setManagedTimeout(() => {
     ai.canSpecial2 = true;
-  }, 15000);
+  }, 13000);
 
   return true;
 };
@@ -2680,7 +2715,7 @@ if (hpW > 0) {
               p.purpleCharging = true;
               p.purpleChargeTimer = 0;
               p.canSpecial2 = false;
-              setManagedTimeout(() => (p.canSpecial2 = true), 15000);
+              setManagedTimeout(() => (p.canSpecial2 = true), 13000);
               keysPressed.current[binds.special2] = false;
             } else if (p.type === "electric") {
               p.vx = 0;
@@ -3047,6 +3082,10 @@ if (p.aiBlockHoldTimer > 0) {
       ? background2
       : selectedStage === "sky"
       ? background3
+      : selectedStage === "hourglass"
+      ? background4
+      : selectedStage === "bottom"
+      ? background5
       : background1;
 
   if (bg.complete && bg.naturalWidth > 0) {
@@ -3783,10 +3822,14 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
   const Layout = ({ children }) => (
     <div
-      className="min-h-screen flex items-center justify-center p-12 relative"
+      className="min-h-screen flex items-center justify-center p-12 relative overflow-hidden"
       style={{
         fontFamily: '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-        background: "#F9E4BC",
+        backgroundImage: `linear-gradient(rgba(2, 6, 23, 0.35), rgba(2, 6, 23, 0.45)), url(${homepageUrl})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+        backgroundColor: "#020617",
       }}
     >
       <GlobalSettingsButton />
@@ -3868,7 +3911,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
   if (mode === "home") {
     return (
       <Layout>
-        <div className="bg-white rounded-3xl p-16 text-center max-w-6xl border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
+        <div className="bg-white rounded-3xl p-12 text-center max-w-7xl border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
           <h1 className="text-6xl font-light text-gray-900 mb-4">RGB Fighters</h1>
           <p className="text-4xl font-light text-gray-500 mb-12">Choose a Mode</p>
 
@@ -4127,15 +4170,17 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
       { key: "default", title: "Default Stage", desc: "Classic arena with platforms" },
       { key: "recursion", title: "Recursion", desc: "Pyramid platforms" },
       { key: "sky", title: "Fly High City", desc: "Asymmetric floating platforms" },
+      { key: "hourglass", title: "Hourglass", desc: "Narrow center bridge with high ledges" },
+      { key: "bottom", title: "Bottom Feeder", desc: "Abyssal staggered platforms" },
     ];
 
     return (
       <Layout>
-        <div className="bg-white rounded-3xl p-16 text-center max-w-6xl border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
+        <div className="bg-white rounded-3xl p-10 text-center max-w-7xl border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
           <h1 className="text-5xl font-light text-gray-900 mb-4">Select Stage</h1>
           <p className="text-lg font-light text-gray-500 mb-12 mt-12">Choose your battlefield.</p>
 
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-6">
             {stageChoices.map((s) => (
               <button
                 key={s.key}
@@ -4157,10 +4202,16 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                       ? "bg-gradient-to-b from-gray-700 to-gray-900"
                       : s.key === "sky"
                       ? "bg-gradient-to-b from-sky-100 to-blue-200"
+                      : s.key === "hourglass"
+                      ? "bg-gradient-to-b from-amber-100 to-purple-200"
+                      : s.key === "bottom"
+                      ? "bg-gradient-to-b from-cyan-950 to-blue-700"
                       : "bg-gradient-to-b from-gray-100 to-gray-200"
                   }`}
                 >
-                  <div className="text-6xl">{s.key === "recursion" ? "🔺" : s.key === "sky" ? "☁️" : "🏛️"}</div>
+                  <div className="text-6xl">
+                    {s.key === "recursion" ? "🔺" : s.key === "sky" ? "☁️" : s.key === "hourglass" ? "⌛" : s.key === "bottom" ? "🌊" : "🏛️"}
+                  </div>
                 </div>
                 <h2 className="text-2xl font-light text-gray-900 mb-2">{s.title}</h2>
                 <p className="text-sm font-light text-gray-500">{s.desc}</p>
