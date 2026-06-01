@@ -377,7 +377,7 @@ const toggleFullscreen = async () => {
       ? "Double Damage & Boost"
       : c === "yellow"
       ? "Spear & Reflect"
-      : "Triple Fire & Disable";
+      : "Triple Fire & Slowdown";
   const shuffle = (arr) => {
     const a = [...arr];
     for (let i = a.length - 1; i > 0; i--) {
@@ -751,6 +751,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
         blockDisabledTimer: 0,
         specialDisabled: false,
         specialDisabledTimer: 0,
+        slowedTimer: 0,
         poisoned: false,
         poisonTicksLeft: 0,
         poisonTickTimer: 0,
@@ -913,6 +914,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
 
           p.specialDisabled = false;
           p.specialDisabledTimer = 0;
+          p.slowedTimer = 0;
 
           p.blockDisabled = false;
           p.blockDisabledTimer = 0;
@@ -1076,6 +1078,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
       let disableBlock = false;
       let disableSpecial = false;
       let specialDisableFrames = 420;
+      let slowFrames = 0;
       let applyPoisonTicks = 0;
       let applyJumpDisable = 0;
 
@@ -1126,8 +1129,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
           damage = 5;
           knockback = 5;
           hitstunFrames = 14;
-          disableSpecial = true;
-          specialDisableFrames = 480;
+          slowFrames = 480;
           break;
         case "yellowspear":
           damage = 2;
@@ -1212,6 +1214,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
         freezeFrames = 0;
         disableBlock = false;
         disableSpecial = false;
+        slowFrames = 0;
         applyPoisonTicks = 0;
         applyJumpDisable = 0;
       }
@@ -1228,6 +1231,9 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
         if (disableSpecial) {
           defender.specialDisabled = true;
           defender.specialDisabledTimer = specialDisableFrames;
+        }
+        if (slowFrames > 0) {
+          defender.slowedTimer = slowFrames;
         }
         if (applyPoisonTicks > 0) {
           defender.poisoned = true;
@@ -2353,6 +2359,7 @@ if (hpW > 0) {
 
         p.specialDisabled = false;
         p.specialDisabledTimer = 0;
+        p.slowedTimer = 0;
 
         p.blockDisabled = false;
         p.blockDisabledTimer = 0;
@@ -2415,6 +2422,7 @@ if (hpW > 0) {
 
         p.specialDisabled = false;
         p.specialDisabledTimer = 0;
+        p.slowedTimer = 0;
 
         p.blockDisabled = false;
         p.blockDisabledTimer = 0;
@@ -2766,6 +2774,12 @@ if (hpW > 0) {
       } else {
         p.speed = 5;
         p.jumpPower = -22;
+      }
+
+      if (p.slowedTimer > 0) {
+        p.slowedTimer--;
+        p.speed *= 0.75;
+        p.jumpPower *= 0.75;
       }
 
       if (p.damageAmpTimer > 0) p.damageAmpTimer--;
