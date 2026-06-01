@@ -360,7 +360,7 @@ const toggleFullscreen = async () => {
 
   const randPick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const randStage = () => randPick(["default", "recursion"]);
-  const FIGHTER_COLORS = ["red", "blue", "green", "black", "white"];
+  const FIGHTER_COLORS = ["red", "blue", "green", "black", "white", "purple", "yellow", "orange"];
   const randColor = () => randPick(FIGHTER_COLORS);
   const fighterNote = (c) =>
     c === "red"
@@ -371,7 +371,13 @@ const toggleFullscreen = async () => {
       ? "Poison & Heal"
       : c === "black"
       ? "Void & Charge"
-      : "Low Light & Drop";
+      : c === "white"
+      ? "Low Light & Drop"
+      : c === "purple"
+      ? "Double Damage & Boost"
+      : c === "yellow"
+      ? "Spear & Reflect"
+      : "Triple Fire & Disable";
   const shuffle = (arr) => {
     const a = [...arr];
     for (let i = a.length - 1; i > 0; i--) {
@@ -442,10 +448,10 @@ const toggleFullscreen = async () => {
 
     if (mode === "ladder") {
       const idx = ladderIndex;
-      const isLast = idx === 4;
+      const isLast = idx === FIGHTER_COLORS.length - 1;
 
       const oppColor = isLast ? p1Color : ladderOppOrder[idx];
-      const diffByStep = ["easy", "medium", "medium", "hard", "hard"][idx] || "medium";
+      const diffByStep = idx <= 0 ? "easy" : idx <= 3 ? "medium" : "hard";
 
       return {
         ...base,
@@ -596,7 +602,7 @@ const toggleFullscreen = async () => {
     const GRAVITY = 1.2;
     const JUMP_DISTANCE = 120;
 
-    const DARK_VARIANT = { red: "#b91c1c", blue: "#1d4ed8", green: "#15803d", black: "#4b5563", white: "#cbd5e1" };
+    const DARK_VARIANT = { red: "#b91c1c", blue: "#1d4ed8", green: "#15803d", black: "#4b5563", white: "#cbd5e1", purple: "#7e22ce", yellow: "#ca8a04", orange: "#c2410c" };
 
     const toRGBA = (hex, a) => {
       const h = hex.replace("#", "");
@@ -619,6 +625,12 @@ const toggleFullscreen = async () => {
             return { hex: "#1f2937", name: "Black", type: "void" };
           case "white":
             return { hex: "#f8fafc", name: "White", type: "light" };
+          case "purple":
+            return { hex: "#a855f7", name: "Purple", type: "psychic" };
+          case "yellow":
+            return { hex: "#facc15", name: "Yellow", type: "electric" };
+          case "orange":
+            return { hex: "#f97316", name: "Orange", type: "explosion" };
           default:
             return { hex: "#ef4444", name: "Red", type: "fire" };
         }
@@ -750,6 +762,15 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
         dashHasHit: false,
         charging: false,
         chargeFrames: 0,
+        purpleCharging: false,
+        purpleChargeTimer: 0,
+        speedBoostTimer: 0,
+        damageAmpTimer: 0,
+        spearLocked: false,
+        spearStunned: false,
+        spearStunTimer: 0,
+        reflecting: false,
+        reflectTimer: 0,
         punchCooldown: 0,
         kickCooldown: 0,
         upperCooldown: 0,
@@ -908,6 +929,18 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
           p.canProjectile = true;
           p.canSpecial2 = true;
 
+          p.purpleCharging = false;
+          p.purpleChargeTimer = 0;
+          p.speedBoostTimer = 0;
+          p.damageAmpTimer = 0;
+          p.spearLocked = false;
+          p.spearStunned = false;
+          p.spearStunTimer = 0;
+          p.reflecting = false;
+          p.reflectTimer = 0;
+          p.speed = 5;
+          p.jumpPower = -22;
+
           p.vx = 0;
           p.vy = 0;
         }
@@ -1034,6 +1067,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
       let freezeFrames = 0;
       let disableBlock = false;
       let disableSpecial = false;
+      let specialDisableFrames = 420;
       let applyPoisonTicks = 0;
       let applyJumpDisable = 0;
 
@@ -1069,6 +1103,28 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
           damage = 5;
           knockback = 15;
           hitstunFrames = 12;
+          break;
+        case "purpleball":
+          damage = 3;
+          knockback = 15;
+          hitstunFrames = 12;
+          break;
+        case "orangeball":
+          damage = 3;
+          knockback = 6;
+          hitstunFrames = 10;
+          break;
+        case "orangeorb":
+          damage = 5;
+          knockback = 5;
+          hitstunFrames = 14;
+          disableSpecial = true;
+          specialDisableFrames = 480;
+          break;
+        case "yellowspear":
+          damage = 2;
+          knockback = 0;
+          hitstunFrames = 0;
           break;
         case "whiteball":
           damage = 5;
@@ -1115,9 +1171,28 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
           break;
       }
 
+      if (defender.damageAmpTimer > 0) {
+        damage *= 2;
+      }
+
       if (defender.healing) {
         defender.healing = false;
         hitstunFrames += 30;
+      }
+
+      if (defender.purpleCharging) {
+        defender.purpleCharging = false;
+        defender.purpleChargeTimer = 0;
+        hitstunFrames += 30;
+      }
+
+      if (defender.reflecting) {
+        defender.reflecting = false;
+        defender.reflectTimer = 0;
+      }
+
+      if (defender.spearLocked) {
+        defender.spearLocked = false;
       }
 
       const blocked = canBlockAttack(attacker, defender, attackType, extra.attackHeight ?? null);
@@ -1144,7 +1219,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
         }
         if (disableSpecial) {
           defender.specialDisabled = true;
-          defender.specialDisabledTimer = 420;
+          defender.specialDisabledTimer = specialDisableFrames;
         }
         if (applyPoisonTicks > 0) {
           defender.poisoned = true;
@@ -1154,6 +1229,13 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
         if (applyJumpDisable > 0) {
           defender.jumpDisabled = true;
           defender.jumpDisabledTimer = applyJumpDisable;
+        }
+        if (attackType === "purpleball") {
+          defender.damageAmpTimer = 300;
+        }
+        if (attackType === "yellowspear") {
+          defender.spearStunned = true;
+          defender.spearStunTimer = 180;
         }
         if (hitstunFrames > 0 && attackType !== "poisonorb") {
           defender.hitstun = true;
@@ -1270,7 +1352,7 @@ const beginMelee = (ai, attackType) => {
 };
 
 const beginProjectile = (ai) => {
-  if (!ai.canProjectile || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun) return false;
+  if (!ai.canProjectile || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging) return false;
 
   const projX = ai.x + (ai.facing > 0 ? ai.width : 0);
   const projY = ai.y + 25;
@@ -1289,6 +1371,48 @@ const beginProjectile = (ai) => {
       radius: 8,
     });
     cooldown = 900;
+  } else if (ai.type === "psychic") {
+    projectiles.current.push({
+      x: projX,
+      y: projY,
+      vx: ai.facing * 8,
+      owner: ai,
+      team: ai.team,
+      type: "purpleball",
+      attackHeight: "high",
+      color: "#a855f7",
+      radius: 8,
+    });
+    cooldown = 1800;
+  } else if (ai.type === "electric") {
+    ai.spearLocked = true;
+    projectiles.current.push({
+      x: projX,
+      y: projY,
+      vx: ai.facing * 20,
+      owner: ai,
+      team: ai.team,
+      type: "yellowspear",
+      attackHeight: "mid",
+      color: "#facc15",
+      radius: 7,
+    });
+    cooldown = 5000;
+  } else if (ai.type === "explosion") {
+    [-16, 0, 16].forEach((offset) => {
+      projectiles.current.push({
+        x: projX + ai.facing * (offset + 18),
+        y: projY,
+        vx: ai.facing * 8,
+        owner: ai,
+        team: ai.team,
+        type: "orangeball",
+        attackHeight: "high",
+        color: "#f97316",
+        radius: 8,
+      });
+    });
+    cooldown = 5000;
   } else if (ai.type === "ice") {
     projectiles.current.push({
       x: projX,
@@ -1353,7 +1477,7 @@ const beginProjectile = (ai) => {
 };
 
 const beginRedDash = (ai) => {
-  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun) return false;
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging) return false;
 
   stopDefense(ai);
   ai.attacking = true;
@@ -1372,7 +1496,7 @@ const beginRedDash = (ai) => {
 };
 
 const beginIceSlowOrb = (ai) => {
-  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun) return false;
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging) return false;
 
   projectiles.current.push({
     x: ai.x + (ai.facing > 0 ? ai.width : 0),
@@ -1395,7 +1519,7 @@ const beginIceSlowOrb = (ai) => {
 };
 
 const beginWhiteDrop = (ai, target) => {
-  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || !target) return false;
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || !target) return false;
 
   const dropX = target.x + target.width / 2;
   const knockbackDir = dropX >= centerX(ai) ? 1 : -1;
@@ -1422,8 +1546,67 @@ const beginWhiteDrop = (ai, target) => {
   return true;
 };
 
+const beginPurplePowerUp = (ai) => {
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.speedBoostTimer > 0) return false;
+
+  stopDefense(ai);
+  ai.vx = 0;
+  ai.attacking = false;
+  ai.attackTimer = 0;
+  ai.attackType = "";
+  ai.attackHeight = "";
+  ai.purpleCharging = true;
+  ai.purpleChargeTimer = 0;
+  ai.canSpecial2 = false;
+
+  setManagedTimeout(() => {
+    ai.canSpecial2 = true;
+  }, 15000);
+
+  return true;
+};
+
+const beginYellowReflect = (ai) => {
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging) return false;
+
+  stopDefense(ai);
+  ai.vx = 0;
+  ai.reflecting = true;
+  ai.reflectTimer = 60;
+  ai.canSpecial2 = false;
+
+  setManagedTimeout(() => {
+    ai.canSpecial2 = true;
+  }, 3000);
+
+  return true;
+};
+
+const beginOrangeOrb = (ai) => {
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging) return false;
+
+  projectiles.current.push({
+    x: ai.x + (ai.facing > 0 ? ai.width : 0),
+    y: ai.y + 25,
+    vx: ai.facing * 2.2,
+    owner: ai,
+    team: ai.team,
+    type: "orangeorb",
+    attackHeight: "mid",
+    color: "#fb923c",
+    radius: 12,
+  });
+
+  ai.canSpecial2 = false;
+  setManagedTimeout(() => {
+    ai.canSpecial2 = true;
+  }, 9000);
+
+  return true;
+};
+
 const beginPoisonHeal = (ai) => {
-  if (!ai.canSpecial2 || ai.specialDisabled || ai.frozen || ai.hitstun || ai.health >= 100) return false;
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.health >= 100) return false;
 
   stopDefense(ai);
   ai.vx = 0;
@@ -1443,7 +1626,7 @@ const beginPoisonHeal = (ai) => {
 };
 
 const beginVoidCharge = (ai) => {
-  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun) return false;
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging) return false;
 
   stopDefense(ai);
   ai.charging = true;
@@ -1634,6 +1817,7 @@ const updateAI = (ai) => {
   const targetVulnerable =
     opp.frozen ||
     opp.hitstun ||
+    opp.spearStunned ||
     opp.blockDisabled ||
     opp.jumpDisabled ||
     !opp.grounded;
@@ -1642,6 +1826,12 @@ const updateAI = (ai) => {
     ai.x < 55 ||
     ai.x + ai.width > WORLD_W - 55;
 
+  if (ai.spearLocked || ai.reflecting || ai.purpleCharging) {
+    stopDefense(ai);
+    ai.vx = 0;
+    return;
+  }
+
   if (ai.dashTimer > 0) {
     stopDefense(ai);
     ai.vx = ai.facing * 18;
@@ -1649,7 +1839,7 @@ const updateAI = (ai) => {
     return;
   }
 
-  if (ai.frozen || ai.hitstun) {
+  if (ai.frozen || ai.hitstun || ai.spearStunned) {
     if (ai.charging) {
       ai.charging = false;
       ai.chargeFrames = 0;
@@ -1659,6 +1849,11 @@ const updateAI = (ai) => {
     }
 
     ai.healing = false;
+    ai.purpleCharging = false;
+    ai.purpleChargeTimer = 0;
+    ai.reflecting = false;
+    ai.reflectTimer = 0;
+    ai.spearLocked = false;
     ai.vx = 0;
     return;
   }
@@ -1713,6 +1908,10 @@ const updateAI = (ai) => {
   stopDefense(ai);
 
   const incoming = getIncomingProjectile(ai);
+  if (incoming && ai.type === "electric" && ai.canSpecial2 && !ai.specialDisabled && rand() < aiSettings.projectileBlockChance + 0.2) {
+    if (beginYellowReflect(ai)) return;
+  }
+
   if (ai.aiBlockHoldTimer > 0 && !ai.blockDisabled) {
   const pressureAttackHeight =
     incoming?.attackHeight ||
@@ -1783,6 +1982,69 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
 ) {
   if (tryJumpToPlatform(ai, opp)) return;
 }
+
+  if (
+    ai.type === "psychic" &&
+    ai.canSpecial2 &&
+    !ai.specialDisabled &&
+    ai.speedBoostTimer <= 0 &&
+    abs > 160 &&
+    !incoming &&
+    rand() < aiSettings.specialChance
+  ) {
+    if (beginPurplePowerUp(ai)) return;
+  }
+
+  if (
+    ai.type === "psychic" &&
+    ai.canProjectile &&
+    !ai.specialDisabled &&
+    sameLane &&
+    abs > 120 &&
+    abs < 440 &&
+    rand() < aiSettings.specialChance &&
+    (targetVulnerable || opp.damageAmpTimer <= 0 || abs > 220)
+  ) {
+    if (beginProjectile(ai)) return;
+  }
+
+  if (
+    ai.type === "electric" &&
+    ai.canProjectile &&
+    !ai.specialDisabled &&
+    sameLane &&
+    abs > 140 &&
+    abs < 520 &&
+    rand() < aiSettings.specialChance &&
+    (targetVulnerable || !opp.grounded || abs > 230)
+  ) {
+    if (beginProjectile(ai)) return;
+  }
+
+  if (
+    ai.type === "explosion" &&
+    ai.canSpecial2 &&
+    !ai.specialDisabled &&
+    sameLane &&
+    abs > 100 &&
+    abs < 430 &&
+    rand() < aiSettings.specialChance &&
+    (targetVulnerable || opp.specialDisabled === false || abs > 190)
+  ) {
+    if (beginOrangeOrb(ai)) return;
+  }
+
+  if (
+    ai.type === "explosion" &&
+    ai.canProjectile &&
+    !ai.specialDisabled &&
+    sameLane &&
+    abs > 115 &&
+    abs < 430 &&
+    rand() < aiSettings.specialChance
+  ) {
+    if (beginProjectile(ai)) return;
+  }
 
   if (
     ai.type === "light" &&
@@ -2098,6 +2360,17 @@ if (hpW > 0) {
 
         p.charging = false;
         p.chargeFrames = 0;
+        p.purpleCharging = false;
+        p.purpleChargeTimer = 0;
+        p.speedBoostTimer = 0;
+        p.damageAmpTimer = 0;
+        p.spearLocked = false;
+        p.spearStunned = false;
+        p.spearStunTimer = 0;
+        p.reflecting = false;
+        p.reflectTimer = 0;
+        p.speed = 5;
+        p.jumpPower = -22;
       }
 
       resetPositions();
@@ -2149,6 +2422,17 @@ if (hpW > 0) {
 
         p.charging = false;
         p.chargeFrames = 0;
+        p.purpleCharging = false;
+        p.purpleChargeTimer = 0;
+        p.speedBoostTimer = 0;
+        p.damageAmpTimer = 0;
+        p.spearLocked = false;
+        p.spearStunned = false;
+        p.spearStunTimer = 0;
+        p.reflecting = false;
+        p.reflectTimer = 0;
+        p.speed = 5;
+        p.jumpPower = -22;
       }
       resetPositions();
       primeNewRound();
@@ -2163,10 +2447,21 @@ if (hpW > 0) {
       if (pausedRef.current) return;
       if (roundPhaseRef.current !== "fight") return;
       if (p.dummy) return;
-      if (p.frozen || p.hitstun) return;
+      if (p.frozen || p.hitstun || p.spearStunned) return;
 
       const binds = p.bindsRef?.current;
       if (!binds) return;
+
+      if (p.spearLocked || p.reflecting || p.purpleCharging) {
+        p.vx = 0;
+        p.blocking = false;
+        p.ducking = false;
+        p.attacking = false;
+        p.attackTimer = 0;
+        p.attackType = "";
+        p.attackHeight = "";
+        return;
+      }
 
       if (p.type === "poison" && binds.special2) {
         const wantsHeal = !!keysPressed.current[binds.special2] && !p.specialDisabled && !p.frozen && p.health < 100;
@@ -2292,6 +2587,18 @@ if (hpW > 0) {
           if (p.type === "fire") {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 8, owner: p, team: p.team, type: "fireball", attackHeight: "high", color: p.color, radius: 8 });
             cooldown = 500;
+          } else if (p.type === "psychic") {
+            projectiles.current.push({ x: projX, y: projY, vx: p.facing * 8, owner: p, team: p.team, type: "purpleball", attackHeight: "high", color: "#a855f7", radius: 8 });
+            cooldown = 1000;
+          } else if (p.type === "electric") {
+            p.spearLocked = true;
+            projectiles.current.push({ x: projX, y: projY, vx: p.facing * 20, owner: p, team: p.team, type: "yellowspear", attackHeight: "mid", color: "#facc15", radius: 7 });
+            cooldown = 5000;
+          } else if (p.type === "explosion") {
+            [-16, 0, 16].forEach((offset) => {
+              projectiles.current.push({ x: projX + p.facing * (offset + 18), y: projY, vx: p.facing * 8, owner: p, team: p.team, type: "orangeball", attackHeight: "high", color: "#f97316", radius: 8 });
+            });
+            cooldown = 5000;
           } else if (p.type === "ice") {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 7, owner: p, team: p.team, type: "iceball", attackHeight: "high", color: "#60a5fa", radius: 8 });
             cooldown = 5000;
@@ -2325,6 +2632,33 @@ if (hpW > 0) {
               keysPressed.current[binds.special2] = false;
             } else if (p.type === "ice") {
               projectiles.current.push({ x: p.x + (p.facing > 0 ? p.width : 0), y: p.y + 25, vx: p.facing * 2.2, owner: p, team: p.team, type: "sloworb", attackHeight: "mid", color: "#93c5fd", radius: 12 });
+              p.canSpecial2 = false;
+              setManagedTimeout(() => (p.canSpecial2 = true), 10000);
+              keysPressed.current[binds.special2] = false;
+            } else if (p.type === "psychic") {
+              p.vx = 0;
+              p.blocking = false;
+              p.ducking = false;
+              p.attacking = false;
+              p.attackTimer = 0;
+              p.attackType = "";
+              p.attackHeight = "";
+              p.purpleCharging = true;
+              p.purpleChargeTimer = 0;
+              p.canSpecial2 = false;
+              setManagedTimeout(() => (p.canSpecial2 = true), 15000);
+              keysPressed.current[binds.special2] = false;
+            } else if (p.type === "electric") {
+              p.vx = 0;
+              p.blocking = false;
+              p.ducking = false;
+              p.reflecting = true;
+              p.reflectTimer = 60;
+              p.canSpecial2 = false;
+              setManagedTimeout(() => (p.canSpecial2 = true), 3000);
+              keysPressed.current[binds.special2] = false;
+            } else if (p.type === "explosion") {
+              projectiles.current.push({ x: p.x + (p.facing > 0 ? p.width : 0), y: p.y + 25, vx: p.facing * 2.2, owner: p, team: p.team, type: "orangeorb", attackHeight: "mid", color: "#fb923c", radius: 12 });
               p.canSpecial2 = false;
               setManagedTimeout(() => (p.canSpecial2 = true), 10000);
               keysPressed.current[binds.special2] = false;
@@ -2400,6 +2734,71 @@ if (hpW > 0) {
       if (p.sweepCooldown > 0) p.sweepCooldown--;
 
       if (p.charging) p.chargeFrames++;
+
+      if (p.purpleCharging) {
+        p.purpleChargeTimer++;
+        p.vx = 0;
+        p.blocking = false;
+        p.ducking = false;
+        p.attacking = false;
+        p.attackTimer = 0;
+        p.attackType = "";
+        p.attackHeight = "";
+        if (p.purpleChargeTimer >= 60) {
+          p.purpleCharging = false;
+          p.purpleChargeTimer = 0;
+          p.speedBoostTimer = 480;
+        }
+      }
+
+      if (p.speedBoostTimer > 0) {
+        p.speedBoostTimer--;
+        p.speed = 6;
+        p.jumpPower = -26.4;
+      } else {
+        p.speed = 5;
+        p.jumpPower = -22;
+      }
+
+      if (p.damageAmpTimer > 0) p.damageAmpTimer--;
+
+      if (p.spearStunned) {
+        p.spearStunTimer--;
+        p.vx = 0;
+        p.attacking = false;
+        p.attackTimer = 0;
+        p.attackType = "";
+        p.attackHeight = "";
+        if (p.spearStunTimer <= 0) {
+          p.spearStunned = false;
+          p.spearStunTimer = 0;
+        }
+      }
+
+      if (p.reflecting) {
+        p.reflectTimer--;
+        p.vx = 0;
+        p.blocking = false;
+        p.ducking = false;
+        p.attacking = false;
+        p.attackTimer = 0;
+        p.attackType = "";
+        p.attackHeight = "";
+        if (p.reflectTimer <= 0) {
+          p.reflecting = false;
+          p.reflectTimer = 0;
+        }
+      }
+
+      if (p.spearLocked) {
+        p.vx = 0;
+        p.blocking = false;
+        p.ducking = false;
+        p.attacking = false;
+        p.attackTimer = 0;
+        p.attackType = "";
+        p.attackHeight = "";
+      }
 
       if (p.hitFlashTimer > 0) p.hitFlashTimer--;
 
@@ -2611,13 +3010,50 @@ if (p.aiBlockHoldTimer > 0) {
 };
 
     const drawProjectile = (proj) => {
+      ctx.save();
+
+      if (proj.type === "yellowspear") {
+        ctx.strokeStyle = "#111827";
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(proj.x - Math.sign(proj.vx || 1) * 18, proj.y);
+        ctx.lineTo(proj.x + Math.sign(proj.vx || 1) * 18, proj.y);
+        ctx.stroke();
+
+        ctx.strokeStyle = "#facc15";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(proj.x - Math.sign(proj.vx || 1) * 18, proj.y);
+        ctx.lineTo(proj.x + Math.sign(proj.vx || 1) * 18, proj.y);
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
+
       ctx.fillStyle = proj.color;
       ctx.beginPath();
       ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = proj.type === "whiteball" || proj.type === "whitedrop" ? "#000000" : "rgba(255, 255, 255, 0.6)";
-      ctx.lineWidth = proj.type === "whiteball" || proj.type === "whitedrop" ? 3 : 2;
+
+      ctx.strokeStyle =
+        proj.type === "whiteball" ||
+        proj.type === "whitedrop" ||
+        proj.type === "purpleball" ||
+        proj.type === "orangeball" ||
+        proj.type === "orangeorb"
+          ? "#000000"
+          : "rgba(255, 255, 255, 0.6)";
+      ctx.lineWidth =
+        proj.type === "whiteball" ||
+        proj.type === "whitedrop" ||
+        proj.type === "purpleball" ||
+        proj.type === "orangeball" ||
+        proj.type === "orangeorb"
+          ? 3
+          : 2;
       ctx.stroke();
+
+      ctx.restore();
     };
 
     const drawFighter = (p) => {
@@ -2645,6 +3081,43 @@ if (p.aiBlockHoldTimer > 0) {
         ctx.globalAlpha = 0.5;
         ctx.fillStyle = "#4ade80";
         ctx.fillRect(p.x - 5, drawY - 5, p.width + 10, drawHeight + 10);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.damageAmpTimer > 0) {
+        ctx.globalAlpha = 0.42;
+        ctx.fillStyle = "#c084fc";
+        ctx.fillRect(p.x - 7, drawY - 7, p.width + 14, drawHeight + 14);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.spearStunned) {
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = "#facc15";
+        ctx.fillRect(p.x - 7, drawY - 7, p.width + 14, drawHeight + 14);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.purpleCharging) {
+        ctx.globalAlpha = 0.62;
+        ctx.fillStyle = "#a855f7";
+        const chargeSize = Math.min(p.purpleChargeTimer / 3, 20);
+        ctx.fillRect(p.x - chargeSize / 2, drawY - chargeSize / 2, p.width + chargeSize, drawHeight + chargeSize);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.speedBoostTimer > 0) {
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = "#e879f9";
+        ctx.fillRect(p.x - 10, drawY - 10, p.width + 20, drawHeight + 20);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.reflecting) {
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = "#facc15";
+        const shieldX = p.facing > 0 ? p.x + p.width + 4 : p.x - 14;
+        ctx.fillRect(shieldX, drawY + 4, 10, drawHeight - 8);
         ctx.globalAlpha = 1;
       }
 
@@ -2893,7 +3366,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
           proj.x += proj.vx;
           proj.y += proj.vy || 0;
 
-          let hitSomeone = false;
+          let handledProjectile = false;
           for (const target of fighters) {
             if (!target.alive) continue;
             if (target.team === proj.team) continue;
@@ -2905,11 +3378,25 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
             const dist = Math.sqrt(dx * dx + dy * dy);
 
             if (dist < target.width / 2 + proj.radius) {
+              if (target.reflecting) {
+                if (proj.type === "yellowspear" && proj.owner) proj.owner.spearLocked = false;
+                const dir = target.facing || (proj.vx < 0 ? -1 : 1);
+                proj.owner = target;
+                proj.team = target.team;
+                proj.x = target.x + (dir > 0 ? target.width + proj.radius + 4 : -proj.radius - 4);
+                proj.y = target.y + target.height / 2;
+                proj.vx = dir * Math.max(8, Math.abs(proj.vx || 8));
+                proj.vy = 0;
+                proj.color = "#facc15";
+                handledProjectile = true;
+                break;
+              }
+
               if (proj.type === "chargeball") {
                 breakFreezeIfNeeded(target);
 
                 const blocked = canBlockAttack(proj.owner, target, "chargeball", proj.attackHeight);
-                let actualDamage = proj.damage;
+                let actualDamage = target.damageAmpTimer > 0 ? proj.damage * 2 : proj.damage;
                 let knockback = Math.min(24, 6 + Math.floor((proj.damage || 1) / 2));
 
                 if (blocked) {
@@ -2927,28 +3414,47 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   target.attackTimer = 0;
                   target.attackType = "";
                 }
-              } else if (proj.type === "sloworb") {
-  applyDamage(proj.owner, target, "sloworb", {
-    attackHeight: proj.attackHeight,
-    knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
-  });
-} else {
-  applyDamage(proj.owner, target, proj.type, {
-    attackHeight: proj.attackHeight,
-    knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
-  });
-}
+              } else if (proj.type === "yellowspear") {
+                const blocked = canBlockAttack(proj.owner, target, "yellowspear", proj.attackHeight);
+                applyDamage(proj.owner, target, "yellowspear", {
+                  attackHeight: proj.attackHeight,
+                  knockbackDir: 0,
+                });
+                if (proj.owner) proj.owner.spearLocked = false;
+                if (!blocked && proj.owner) {
+                  const dir = proj.owner.facing || 1;
+                  target.x = Math.max(0, Math.min(WORLD_W - target.width, dir > 0 ? proj.owner.x + proj.owner.width + 14 : proj.owner.x - target.width - 14));
+                  target.y = Math.min(target.y, groundLevel - target.height);
+                  target.vx = 0;
+                  target.vy = 0;
+                  target.grounded = true;
+                  target.spearStunned = true;
+                  target.spearStunTimer = 180;
+                  target.frozen = false;
+                  target.frozenTimer = 0;
+                  target.hitstun = false;
+                  target.hitstunTimer = 0;
+                }
+              } else {
+                applyDamage(proj.owner, target, proj.type, {
+                  attackHeight: proj.attackHeight,
+                  knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
+                });
+              }
 
               markKOIfNeeded(target);
 
               projectiles.current.splice(i, 1);
-              hitSomeone = true;
+              handledProjectile = true;
               break;
             }
           }
-          if (hitSomeone) continue;
+          if (handledProjectile) continue;
 
-          if (proj.x < -50 || proj.x > WORLD_W + 50 || proj.y < -90 || proj.y > WORLD_H + 90) projectiles.current.splice(i, 1);
+          if (proj.x < -50 || proj.x > WORLD_W + 50 || proj.y < -90 || proj.y > WORLD_H + 90) {
+            if (proj.type === "yellowspear" && proj.owner) proj.owner.spearLocked = false;
+            projectiles.current.splice(i, 1);
+          }
         }
 
         checkRoundEndByHP();
@@ -3251,6 +3757,12 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
         ? "rgba(34, 197, 94, 0.2)"
         : color === "white"
         ? "rgba(17, 24, 39, 0.12)"
+        : color === "purple"
+        ? "rgba(168, 85, 247, 0.22)"
+        : color === "yellow"
+        ? "rgba(250, 204, 21, 0.24)"
+        : color === "orange"
+        ? "rgba(249, 115, 22, 0.22)"
         : "rgba(31, 41, 55, 0.2)";
 
     const border =
@@ -3262,6 +3774,12 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
         ? "#22c55e"
         : color === "white"
         ? "#111827"
+        : color === "purple"
+        ? "#a855f7"
+        : color === "yellow"
+        ? "#ca8a04"
+        : color === "orange"
+        ? "#f97316"
         : "#1f2937";
 
     const bodyClass =
@@ -3273,6 +3791,12 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
         ? "bg-green-500 border-green-600"
         : color === "white"
         ? "bg-white border-gray-900"
+        : color === "purple"
+        ? "bg-purple-500 border-purple-700"
+        : color === "yellow"
+        ? "bg-yellow-300 border-yellow-600"
+        : color === "orange"
+        ? "bg-orange-500 border-orange-700"
         : "bg-gray-800 border-black";
 
     return (
@@ -3364,7 +3888,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
               : "Ladder — Pick your fighter"}
           </p>
 
-          <div className="grid grid-cols-5 gap-6">
+          <div className="grid grid-cols-4 gap-6">
             {FIGHTER_COLORS.map((c) => (
               <ColorCard
                 key={c}
@@ -3404,7 +3928,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
           <h1 className="text-6xl font-light text-gray-900 mb-4">{title}</h1>
           <p className="text-xl font-light text-gray-500 mb-10">{subtitle}</p>
 
-          <div className="grid grid-cols-5 gap-6">
+          <div className="grid grid-cols-4 gap-6">
             {FIGHTER_COLORS.map((c) => (
               <ColorCard
                 key={c}
@@ -3441,7 +3965,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
           <h1 className="text-6xl font-light text-gray-900 mb-4">Choose Opponent 2</h1>
           <p className="text-xl font-light text-gray-500 mb-10">Pick the AI Fighter 2</p>
 
-          <div className="grid grid-cols-5 gap-6">
+          <div className="grid grid-cols-4 gap-6">
             {FIGHTER_COLORS.map((c) => (
               <ColorCard
                 key={c}
@@ -3477,7 +4001,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
           <h1 className="text-6xl font-light text-gray-900 mb-4">Choose Player 2</h1>
           <p className="text-xl font-light text-gray-500 mb-10">{mode === "offline" ? "Offline 1v1 — Pick P2 Fighter" : "2v2 — Pick P2 Fighter"}</p>
 
-          <div className="grid grid-cols-5 gap-6">
+          <div className="grid grid-cols-4 gap-6">
             {FIGHTER_COLORS.map((c) => (
               <ColorCard
                 key={c}
@@ -3605,7 +4129,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
   }
 
   if (menuStep === "playing") {
-    const ladderLabel = mode === "ladder" ? `Ladder Match ${ladderIndex + 1} / 5` : null;
+    const ladderLabel = mode === "ladder" ? `Ladder Match ${ladderIndex + 1} / ${FIGHTER_COLORS.length}` : null;
 
     const onExit = () => {
       goHome();
@@ -3616,7 +4140,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
       if (matchWinnerText === "Team 1") {
         const next = ladderIndex + 1;
-        if (next >= 5) {
+        if (next >= FIGHTER_COLORS.length) {
           setLadderWin(true);
           setMenuStep("ladder_result");
           return;
