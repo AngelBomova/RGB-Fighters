@@ -165,57 +165,161 @@ const toggleFullscreen = async () => {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [listeningFor, setListeningFor] = useState(null);
+  const listeningForRef = useRef(null);
+
+  const ACTION_LABELS = {
+    moveLeft: "Move Left",
+    moveRight: "Move Right",
+    jump: "Jump",
+    duck: "Duck",
+    block: "Block",
+    punch: "Punch",
+    kick: "Kick",
+    special1: "Special Move 1",
+    special2: "Special Move 2",
+  };
+
+  useEffect(() => {
+    listeningForRef.current = listeningFor;
+  }, [listeningFor]);
 
   useEffect(() => {
     pausedRef.current = settingsOpen;
+
+    keysPressed.current = {};
+
+    if (!settingsOpen) {
+      listeningForRef.current = null;
+      setListeningFor(null);
+    }
   }, [settingsOpen]);
+
+  const normalizeBindKey = (key) => {
+    const k = String(key || "").toLowerCase();
+
+    if (k === "spacebar") return " ";
+    if (k === " ") return " ";
+    if (k.startsWith("arrow")) return k;
+
+    return k;
+  };
 
   const prettyKey = (k) => {
     if (!k) return "";
-    const key = String(k);
+
+    const key = normalizeBindKey(k);
+
     if (key === " ") return "Space";
     if (key === "escape") return "Esc";
+
     if (key.startsWith("arrow")) {
-      return key.replace("arrow", "Arrow ").replace("up", "Up").replace("down", "Down").replace("left", "Left").replace("right", "Right");
+      return key
+        .replace("arrow", "Arrow ")
+        .replace("up", "Up")
+        .replace("down", "Down")
+        .replace("left", "Left")
+        .replace("right", "Right");
     }
+
     return key.length === 1 ? key.toUpperCase() : key;
   };
 
-  const applyNewBinding = (player, action, key) => {
-    const k = (key || "").toLowerCase();
-    if (!k) return;
-    const blocked = ["meta", "shift", "control", "alt", "capslock", "tab", "dead"];
-    if (blocked.includes(k)) return;
+  const isBindableKey = (k) => {
+    if (!k) return false;
 
-    const setter = player === "p1" ? setP1Binds : setP2Binds;
-    setter((prev) => {
-      const next = { ...prev };
-      for (const a of Object.keys(next)) {
-        if (a !== action && next[a] === k) next[a] = "";
+    const blocked = [
+      "meta",
+      "shift",
+      "control",
+      "alt",
+      "capslock",
+      "tab",
+      "dead",
+      "unidentified",
+      "process",
+    ];
+
+    return !blocked.includes(k);
+  };
+
+  const clearKeyFromBindSet = (bindSet, keyToRemove) => {
+    const next = { ...bindSet };
+
+    for (const action of Object.keys(next)) {
+      if (next[action] === keyToRemove) {
+        next[action] = "";
       }
-      next[action] = k;
-      return next;
-    });
+    }
+
+    return next;
+  };
+
+  const applyNewBinding = (player, action, key) => {
+    const k = normalizeBindKey(key);
+    if (!isBindableKey(k)) return;
+
+    keysPressed.current = {};
+
+    if (player === "p1") {
+      setP1Binds((prev) => {
+        const next = clearKeyFromBindSet(prev, k);
+        next[action] = k;
+        return next;
+      });
+
+      setP2Binds((prev) => clearKeyFromBindSet(prev, k));
+    } else {
+      setP2Binds((prev) => {
+        const next = clearKeyFromBindSet(prev, k);
+        next[action] = k;
+        return next;
+      });
+
+      setP1Binds((prev) => clearKeyFromBindSet(prev, k));
+    }
   };
 
   useEffect(() => {
-    if (!settingsOpen || !listeningFor) return;
     const onKey = (e) => {
+      if (!settingsOpen) return;
+
+      const target = listeningForRef.current;
+      if (!target) return;
+
       e.preventDefault();
       e.stopPropagation();
-      const k = (e.key || "").toLowerCase();
+      if (typeof e.stopImmediatePropagation === "function") {
+        e.stopImmediatePropagation();
+      }
+
+      if (e.repeat) return;
+
+      const k = normalizeBindKey(e.key);
+
       if (k === "escape") {
+        listeningForRef.current = null;
         setListeningFor(null);
+        keysPressed.current = {};
         return;
       }
-      applyNewBinding(listeningFor.player, listeningFor.action, k);
-      setListeningFor(null);
-    };
-    window.addEventListener("keydown", onKey, { capture: true });
-    return () => window.removeEventListener("keydown", onKey, { capture: true });
-  }, [settingsOpen, listeningFor]);
 
-  useEffect(() => {
+      if (!isBindableKey(k)) return;
+
+      applyNewBinding(target.player, target.action, k);
+
+      listeningForRef.current = null;
+      setListeningFor(null);
+      keysPressed.current = {};
+    };
+
+    window.addEventListener("keydown", onKey, true);
+
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [settingsOpen]);
+
+    useEffect(() => {
     if (!document.getElementById("tailwind-script")) {
       const s = document.createElement("script");
       s.id = "tailwind-script";
@@ -801,8 +905,22 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
 
     practiceRefreshRef.current = refreshPractice;
 
-    const handleKeyDown = (e) => (keysPressed.current[(e.key || "").toLowerCase()] = true);
-    const handleKeyUp = (e) => (keysPressed.current[(e.key || "").toLowerCase()] = false);
+    const handleKeyDown = (e) => {
+      if (pausedRef.current || listeningForRef.current) return;
+
+      const k = normalizeBindKey(e.key);
+      if (!k) return;
+
+      keysPressed.current[k] = true;
+    };
+
+    const handleKeyUp = (e) => {
+      const k = normalizeBindKey(e.key);
+      if (!k) return;
+
+      keysPressed.current[k] = false;
+    };
+
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
 
@@ -2820,44 +2938,109 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
   const SettingsModal = () => {
     if (!settingsOpen) return null;
 
-    const Row = ({ title, currentKey, onChange }) => (
-      <div className="flex items-center justify-between gap-3 p-4 rounded-2xl border border-gray-100 bg-white">
-        <div>
-          <div className="text-sm text-gray-900 font-light">{title}</div>
-          <div className="text-xs text-gray-500 font-light mt-1">
-            Current: <span className="font-medium text-gray-700">{prettyKey(currentKey) || "Unbound"}</span>
+    const Row = ({ title, player, action, currentKey }) => {
+      const active =
+        listeningFor?.player === player && listeningFor?.action === action;
+
+      return (
+        <div
+          className={`flex items-center justify-between gap-3 p-4 rounded-2xl border transition ${
+            active
+              ? "border-gray-900 bg-gray-100"
+              : "border-gray-100 bg-white"
+          }`}
+        >
+          <div>
+            <div className="text-sm text-gray-900 font-light">{title}</div>
+            <div className="text-xs text-gray-500 font-light mt-1">
+              Current:{" "}
+              <span className="font-medium text-gray-700">
+                {prettyKey(currentKey) || "Unbound"}
+              </span>
+            </div>
           </div>
+
+          <button
+            type="button"
+            className={`rounded-2xl px-4 py-2 border transition text-sm font-light ${
+              active
+                ? "border-gray-900 bg-gray-900 text-white"
+                : "border-gray-200 hover:bg-gray-50 text-gray-800"
+            }`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+
+              keysPressed.current = {};
+
+              if (active) {
+                listeningForRef.current = null;
+                setListeningFor(null);
+              } else {
+                const next = { player, action };
+                listeningForRef.current = next;
+                setListeningFor(next);
+              }
+            }}
+          >
+            {active ? "Listening..." : "Change"}
+          </button>
         </div>
-        <button className="rounded-2xl px-4 py-2 border border-gray-200 hover:bg-gray-50 transition text-sm font-light" onClick={onChange}>
-          Change
-        </button>
-      </div>
+      );
+    };
+
+    const renderPlayerRows = (player, binds) => (
+      <>
+        <Row title="Move Left" player={player} action="moveLeft" currentKey={binds.moveLeft} />
+        <Row title="Move Right" player={player} action="moveRight" currentKey={binds.moveRight} />
+        <Row title="Jump" player={player} action="jump" currentKey={binds.jump} />
+        <Row title="Duck" player={player} action="duck" currentKey={binds.duck} />
+        <Row title="Block" player={player} action="block" currentKey={binds.block} />
+        <Row title="Punch" player={player} action="punch" currentKey={binds.punch} />
+        <Row title="Kick" player={player} action="kick" currentKey={binds.kick} />
+        <Row title="Special Move 1" player={player} action="special1" currentKey={binds.special1} />
+        <Row title="Special Move 2" player={player} action="special2" currentKey={binds.special2} />
+      </>
     );
 
-    const P1 = p1BindsRef.current;
-    const P2 = p2BindsRef.current;
+    const listeningLabel = listeningFor
+      ? `${listeningFor.player === "p1" ? "Player 1" : "Player 2"} ${
+          ACTION_LABELS[listeningFor.action] || listeningFor.action
+        }`
+      : "";
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
         <div
           className="absolute inset-0 bg-black/30"
           onClick={() => {
+            listeningForRef.current = null;
             setListeningFor(null);
             setSettingsOpen(false);
+            keysPressed.current = {};
           }}
         />
-        <div className="relative bg-white rounded-3xl w-[820px] max-w-[94vw] p-8 border border-gray-200">
+
+        <div className="relative bg-white rounded-3xl w-[920px] max-w-[94vw] max-h-[90vh] overflow-y-auto p-8 border border-gray-200">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="text-2xl font-light text-gray-900">Settings</div>
-              <div className="text-sm text-gray-500 font-light mt-1">Keybinds (P1 + P2)</div>
+              <div className="text-sm text-gray-500 font-light mt-1">
+                Keybinds (P1 + P2)
+              </div>
             </div>
 
             <button
+              type="button"
               className="rounded-2xl px-4 py-2 border border-gray-200 hover:bg-gray-50 transition text-sm font-light"
               onClick={() => {
+                listeningForRef.current = null;
                 setListeningFor(null);
                 setSettingsOpen(false);
+                keysPressed.current = {};
               }}
             >
               Close
@@ -2865,44 +3048,33 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
           </div>
 
           {listeningFor && (
-            <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm font-light text-gray-800">
-              Press a key… <span className="text-gray-500">(Esc to cancel)</span>
+            <div className="mt-4 rounded-2xl border border-gray-900 bg-gray-50 p-4 text-sm font-light text-gray-800">
+              Press a key for{" "}
+              <span className="font-medium text-gray-900">{listeningLabel}</span>.
+              <span className="text-gray-500"> Esc cancels.</span>
             </div>
           )}
 
-          <div className="mt-6 grid grid-cols-2 gap-4">
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-3">
               <div className="text-sm font-light text-gray-700">Player 1</div>
-              <Row title="Move Left" currentKey={P1.moveLeft} onChange={() => setListeningFor({ player: "p1", action: "moveLeft" })} />
-              <Row title="Move Right" currentKey={P1.moveRight} onChange={() => setListeningFor({ player: "p1", action: "moveRight" })} />
-              <Row title="Jump" currentKey={P1.jump} onChange={() => setListeningFor({ player: "p1", action: "jump" })} />
-              <Row title="Duck" currentKey={P1.duck} onChange={() => setListeningFor({ player: "p1", action: "duck" })} />
-              <Row title="Block" currentKey={P1.block} onChange={() => setListeningFor({ player: "p1", action: "block" })} />
-              <Row title="Punch" currentKey={P1.punch} onChange={() => setListeningFor({ player: "p1", action: "punch" })} />
-              <Row title="Kick" currentKey={P1.kick} onChange={() => setListeningFor({ player: "p1", action: "kick" })} />
-              <Row title="Special Move 1" currentKey={P1.special1} onChange={() => setListeningFor({ player: "p1", action: "special1" })} />
-              <Row title="Special Move 2" currentKey={P1.special2} onChange={() => setListeningFor({ player: "p1", action: "special2" })} />
+              {renderPlayerRows("p1", p1Binds)}
             </div>
 
             <div className="space-y-3">
               <div className="text-sm font-light text-gray-700">Player 2</div>
-              <Row title="Move Left" currentKey={P2.moveLeft} onChange={() => setListeningFor({ player: "p2", action: "moveLeft" })} />
-              <Row title="Move Right" currentKey={P2.moveRight} onChange={() => setListeningFor({ player: "p2", action: "moveRight" })} />
-              <Row title="Jump" currentKey={P2.jump} onChange={() => setListeningFor({ player: "p2", action: "jump" })} />
-              <Row title="Duck" currentKey={P2.duck} onChange={() => setListeningFor({ player: "p2", action: "duck" })} />
-              <Row title="Block" currentKey={P2.block} onChange={() => setListeningFor({ player: "p2", action: "block" })} />
-              <Row title="Punch" currentKey={P2.punch} onChange={() => setListeningFor({ player: "p2", action: "punch" })} />
-              <Row title="Kick" currentKey={P2.kick} onChange={() => setListeningFor({ player: "p2", action: "kick" })} />
-              <Row title="Special Move 1" currentKey={P2.special1} onChange={() => setListeningFor({ player: "p2", action: "special1" })} />
-              <Row title="Special Move 2" currentKey={P2.special2} onChange={() => setListeningFor({ player: "p2", action: "special2" })} />
+              {renderPlayerRows("p2", p2Binds)}
             </div>
           </div>
 
-          <div className="mt-6 flex items-center justify-between gap-4">
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
             <button
+              type="button"
               className="rounded-2xl px-4 py-2 border border-gray-200 hover:bg-gray-50 transition text-sm font-light"
               onClick={() => {
+                listeningForRef.current = null;
                 setListeningFor(null);
+                keysPressed.current = {};
                 setP1Binds(DEFAULT_P1);
                 setP2Binds(DEFAULT_P2);
               }}
@@ -2910,27 +3082,36 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
               Reset Defaults
             </button>
 
-            <button
-              className="rounded-2xl px-4 py-2 border border-gray-200 hover:bg-gray-50 transition text-sm font-light"
-              onClick={() => {
-                setListeningFor(null);
-                setSettingsOpen(false);
-                goHome();
-              }}
-            >
-              Return to Home
-            </button>
-            <button
-  onClick={toggleFullscreen}
-  className="bg-white/80 backdrop-blur border border-gray-200 rounded-2xl px-5 py-3 hover:bg-white transition"
->
-  <span className="text-sm text-gray-800 font-light">
-    {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-  </span>
-</button>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="bg-white/80 backdrop-blur border border-gray-200 rounded-2xl px-5 py-3 hover:bg-white transition"
+              >
+                <span className="text-sm text-gray-800 font-light">
+                  {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className="rounded-2xl px-4 py-2 border border-gray-200 hover:bg-gray-50 transition text-sm font-light"
+                onClick={() => {
+                  listeningForRef.current = null;
+                  setListeningFor(null);
+                  setSettingsOpen(false);
+                  keysPressed.current = {};
+                  goHome();
+                }}
+              >
+                Return to Home
+              </button>
+            </div>
           </div>
 
-          <div className="mt-4 text-xs text-gray-500 font-light">Tip: Opening settings pauses gameplay (and the timer).</div>
+          <div className="mt-4 text-xs text-gray-500 font-light">
+            Tip: Click Change, press one key, and it will automatically save. Duplicate keys are removed from the other player so controls do not overlap.
+          </div>
         </div>
       </div>
     );
