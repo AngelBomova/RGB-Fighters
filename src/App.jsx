@@ -1,5 +1,6 @@
 import background1Url from "./assets/Background1.png";
 import background2Url from "./assets/Background2.png";
+import background3Url from "./assets/Background3.png";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 function FighterGame() {
@@ -359,7 +360,7 @@ const toggleFullscreen = async () => {
   }, [countdownValue]);
 
   const randPick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-  const randStage = () => randPick(["default", "recursion"]);
+  const randStage = () => randPick(["default", "recursion", "sky"]);
   const FIGHTER_COLORS = ["red", "blue", "green", "black", "white", "purple", "yellow", "orange"];
   const randColor = () => randPick(FIGHTER_COLORS);
   const fighterNote = (c) =>
@@ -594,11 +595,15 @@ const toggleFullscreen = async () => {
     const background2 = new Image();
     background2.src = background2Url;
 
+    const background3 = new Image();
+    background3.src = background3Url;
+
     const WORLD_W = 900;
     const WORLD_H = 500;
 
     const GROUND = 380;
     const RECURSION_GROUND = 460;
+    const SKY_GROUND = 405;
     const GRAVITY = 1.2;
     const JUMP_DISTANCE = 120;
 
@@ -696,7 +701,13 @@ const toggleFullscreen = async () => {
 const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
 
     const selectedStage = gameConfig.stage || "default";
-    const groundLevel = selectedStage === "default" ? GROUND : RECURSION_GROUND;
+
+    const groundLevel =
+      selectedStage === "default"
+        ? GROUND
+        : selectedStage === "recursion"
+        ? RECURSION_GROUND
+        : SKY_GROUND;
 
     const platforms =
       selectedStage === "default"
@@ -705,11 +716,18 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
             { x: 250, y: 280, width: 150, height: 20 },
             { x: 500, y: 280, width: 150, height: 20 },
           ]
-        : [
+        : selectedStage === "recursion"
+        ? [
             { x: 0, y: RECURSION_GROUND, width: WORLD_W, height: 20 },
             { x: 225, y: RECURSION_GROUND - JUMP_DISTANCE, width: 450, height: 20 },
             { x: 337.5, y: RECURSION_GROUND - JUMP_DISTANCE * 2, width: 225, height: 20 },
             { x: 393.75, y: RECURSION_GROUND - JUMP_DISTANCE * 3, width: 112.5, height: 20 },
+          ]
+        : [
+            { x: 0, y: SKY_GROUND, width: WORLD_W, height: 20 },
+            { x: 35, y: 285, width: 220, height: 20 },
+            { x: 615, y: 255, width: 250, height: 20 },
+            { x: 335, y: 135, width: 230, height: 20 },
           ];
 
     const makeFighter = (opts) => {
@@ -3024,7 +3042,12 @@ if (p.aiBlockHoldTimer > 0) {
   ctx.fillStyle = "#020617";
   ctx.fillRect(0, 0, WORLD_W, WORLD_H);
 
-  const bg = selectedStage === "recursion" ? background2 : background1;
+  const bg =
+    selectedStage === "recursion"
+      ? background2
+      : selectedStage === "sky"
+      ? background3
+      : background1;
 
   if (bg.complete && bg.naturalWidth > 0) {
     ctx.drawImage(bg, 0, 0, WORLD_W, WORLD_H);
@@ -3512,7 +3535,6 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
       if (mode === "practice") {
         ctx.fillStyle = "rgba(17,24,39,0.75)";
         ctx.font = "12px Arial";
-        // ctx.fillText("Practice: Dummy has 100 HP, takes knockback/launch, and disappears on KO. Use Refresh to bring it back.", 18, WORLD_H - 18);
       }
 
       if (roundPhaseRef.current === "countdown") {
@@ -4104,15 +4126,16 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
     const stageChoices = [
       { key: "default", title: "Default Stage", desc: "Classic arena with platforms" },
       { key: "recursion", title: "Recursion", desc: "Pyramid platforms" },
+      { key: "sky", title: "Fly High City", desc: "Asymmetric floating platforms" },
     ];
 
     return (
       <Layout>
-        <div className="bg-white rounded-3xl p-16 text-center max-w-4xl border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
+        <div className="bg-white rounded-3xl p-16 text-center max-w-6xl border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
           <h1 className="text-5xl font-light text-gray-900 mb-4">Select Stage</h1>
           <p className="text-lg font-light text-gray-500 mb-12 mt-12">Choose your battlefield.</p>
 
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-3 gap-6">
             {stageChoices.map((s) => (
               <button
                 key={s.key}
@@ -4128,8 +4151,16 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 className="p-10 bg-white border border-gray-100 rounded-2xl hover:scale-[0.98] active:scale-95 transition-all duration-150"
                 style={{ boxShadow: "0 10px 30px rgba(0, 0, 0, 0.05)" }}
               >
-                <div className={`mb-6 h-40 rounded-2xl flex items-center justify-center ${s.key === "recursion" ? "bg-gradient-to-b from-gray-700 to-gray-900" : "bg-gradient-to-b from-gray-100 to-gray-200"}`}>
-                  <div className="text-6xl">{s.key === "recursion" ? "🔺" : "🏛️"}</div>
+                <div
+                  className={`mb-6 h-40 rounded-2xl flex items-center justify-center ${
+                    s.key === "recursion"
+                      ? "bg-gradient-to-b from-gray-700 to-gray-900"
+                      : s.key === "sky"
+                      ? "bg-gradient-to-b from-sky-100 to-blue-200"
+                      : "bg-gradient-to-b from-gray-100 to-gray-200"
+                  }`}
+                >
+                  <div className="text-6xl">{s.key === "recursion" ? "🔺" : s.key === "sky" ? "☁️" : "🏛️"}</div>
                 </div>
                 <h2 className="text-2xl font-light text-gray-900 mb-2">{s.title}</h2>
                 <p className="text-sm font-light text-gray-500">{s.desc}</p>
