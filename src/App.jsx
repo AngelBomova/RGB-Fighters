@@ -977,6 +977,13 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
       }
     };
 
+    const breakSpearStunIfNeeded = (def) => {
+      if (def.spearStunned) {
+        def.spearStunned = false;
+        def.spearStunTimer = 0;
+      }
+    };
+
     const updateHitboxes = (p) => {
       const drawHeight = p.ducking ? p.height * 0.6 : p.height;
       const drawY = p.ducking ? p.y + p.height * 0.4 : p.y;
@@ -1057,6 +1064,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
       if (!defender.alive) return 0;
       if (attackType === "iceball" && defender.frozen) return 0;
 
+      breakSpearStunIfNeeded(defender);
       breakFreezeIfNeeded(defender);
 
       let damage = 0;
@@ -1235,7 +1243,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
         }
         if (attackType === "yellowspear") {
           defender.spearStunned = true;
-          defender.spearStunTimer = 180;
+          defender.spearStunTimer = 5;
         }
         if (hitstunFrames > 0 && attackType !== "poisonorb") {
           defender.hitstun = true;
@@ -3393,6 +3401,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
               }
 
               if (proj.type === "chargeball") {
+                breakSpearStunIfNeeded(target);
                 breakFreezeIfNeeded(target);
 
                 const blocked = canBlockAttack(proj.owner, target, "chargeball", proj.attackHeight);
