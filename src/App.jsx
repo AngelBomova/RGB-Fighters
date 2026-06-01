@@ -6,6 +6,15 @@ import background5Url from "./assets/Background5.png";
 import homepageUrl from "./assets/homepage.png";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
+const rgbSoundModules = import.meta.glob("./assets/RGBsounds/*", { eager: true, import: "default" });
+const RGB_SOUND_URLS = Object.fromEntries(
+  Object.entries(rgbSoundModules).map(([path, url]) => {
+    const fileName = path.split("/").pop() || "";
+    const soundName = fileName.replace(/\.[^.]+$/, "");
+    return [soundName, url];
+  })
+);
+
 function FighterGame() {
   const [tailwindLoaded, setTailwindLoaded] = useState(false);
 
@@ -52,6 +61,9 @@ const toggleFullscreen = async () => {
   const pausedRef = useRef(false);
 
   const practiceRefreshRef = useRef(null);
+  const musicAudioRef = useRef({});
+  const currentMusicRef = useRef("");
+  const audioUnlockedRef = useRef(false);
 
   const timeoutsRef = useRef([]);
   const setManagedTimeout = (fn, ms) => {
@@ -167,6 +179,33 @@ const toggleFullscreen = async () => {
     } catch {}
   }, [p2Binds]);
 
+  useEffect(() => {
+    if (Object.keys(musicAudioRef.current).length) return;
+
+    const musicNames = {
+      menu: "menu_theme",
+      default: "stage_default",
+      recursion: "stage_recursion",
+      sky: "stage_sky",
+      hourglass: "stage_hourglass",
+      bottom: "stage_bottom",
+    };
+
+    const tracks = {};
+
+    for (const [key, soundName] of Object.entries(musicNames)) {
+      const url = RGB_SOUND_URLS[soundName];
+      if (!url) continue;
+      const audio = new Audio(url);
+      audio.loop = true;
+      audio.volume = 0.35;
+      audio.preload = "auto";
+      tracks[key] = audio;
+    }
+
+    musicAudioRef.current = tracks;
+  }, []);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [listeningFor, setListeningFor] = useState(null);
   const listeningForRef = useRef(null);
@@ -197,6 +236,58 @@ const toggleFullscreen = async () => {
       setListeningFor(null);
     }
   }, [settingsOpen]);
+
+  const stopMusic = () => {
+    const currentName = currentMusicRef.current;
+    if (!currentName) return;
+
+    const audio = musicAudioRef.current[currentName];
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+
+    currentMusicRef.current = "";
+  };
+
+  const playMusic = (name) => {
+    if (!name) return;
+
+    const audio = musicAudioRef.current[name];
+    if (!audio) return;
+
+    if (currentMusicRef.current === name && !audio.paused) return;
+
+    if (currentMusicRef.current !== name) {
+      stopMusic();
+      currentMusicRef.current = name;
+    }
+
+    audio.volume = 0.35;
+    audio.loop = true;
+    if (audio.paused) audio.currentTime = 0;
+    audio.play().catch(() => {});
+  };
+
+  const playSfx = (name) => {
+    const url = RGB_SOUND_URLS[name];
+    if (!url) return;
+
+    try {
+      const audio = new Audio(url);
+      audio.volume = 0.65;
+      audio.play().catch(() => {});
+    } catch {}
+  };
+
+  const unlockAudio = () => {
+    if (audioUnlockedRef.current) return;
+    audioUnlockedRef.current = true;
+
+    const activeName = currentMusicRef.current || ((menuStep === "playing" && !settingsOpen) ? gameConfig.stage || "default" : "menu");
+    const audio = musicAudioRef.current[activeName];
+    if (audio) audio.play().catch(() => {});
+  };
 
   const normalizeBindKey = (key) => {
     const k = String(key || "").toLowerCase();
@@ -473,6 +564,30 @@ const toggleFullscreen = async () => {
     return { ...base, humans: [], ai: [], difficulty: null, stage: "default" };
   }, [mode, p1Color, p2Color, opp1Color, opp2Color, difficulty, stage, ladderIndex, ladderOppOrder]);
 
+  useEffect(() => {
+    const handleUnlock = () => unlockAudio();
+    window.addEventListener("pointerdown", handleUnlock, { once: true });
+    window.addEventListener("keydown", handleUnlock, { once: true });
+    window.addEventListener("touchstart", handleUnlock, { once: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", handleUnlock);
+      window.removeEventListener("keydown", handleUnlock);
+      window.removeEventListener("touchstart", handleUnlock);
+    };
+  }, [menuStep, settingsOpen, gameConfig.stage]);
+
+  useEffect(() => {
+    const nextMusic = menuStep === "playing" && !settingsOpen ? (gameConfig.stage || "default") : "menu";
+    playMusic(nextMusic);
+
+    return () => {
+      if (currentMusicRef.current && currentMusicRef.current !== nextMusic) stopMusic();
+    };
+  }, [menuStep, settingsOpen, gameConfig.stage]);
+
+  useEffect(() => () => stopMusic(), []);
+
   const resetAll = () => {
     setGameOver(false);
     setRoundWinnerText(null);
@@ -487,6 +602,7 @@ const toggleFullscreen = async () => {
   };
 
   const goHome = () => {
+    playSfx("menu_back");
     setSettingsOpen(false);
     setListeningFor(null);
 
@@ -509,6 +625,7 @@ const toggleFullscreen = async () => {
   };
 
   const startModeFlow = (m) => {
+    playSfx("menu_select");
     setMode(m);
     setSettingsOpen(false);
     setListeningFor(null);
@@ -1270,6 +1387,9 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
         slowFrames = 0;
         applyPoisonTicks = 0;
         applyJumpDisable = 0;
+        playSfx("block");
+      } else if (damage > 0) {
+        playSfx("hit");
       }
 
       if (!blocked) {
@@ -1371,49 +1491,53 @@ const stopDefense = (ai) => {
   ai.ducking = false;
 };
 
-const beginMelee = (ai, attackType) => {
-  if (ai.attacking || ai.hitstun || ai.frozen) return false;
+  const beginMelee = (ai, attackType) => {
+    if (ai.attacking || ai.hitstun || ai.frozen) return false;
 
-  stopDefense(ai);
-  ai.vx = 0;
-  ai.healing = false;
+    stopDefense(ai);
+    ai.vx = 0;
+    ai.healing = false;
 
-  if (attackType === "punch" && ai.punchCooldown === 0) {
-    ai.attacking = true;
-    ai.attackType = "punch";
-    ai.attackHeight = "mid";
-    ai.attackTimer = 15;
-    ai.punchCooldown = 20;
-    return true;
-  }
+    if (attackType === "punch" && ai.punchCooldown === 0) {
+      ai.attacking = true;
+      ai.attackType = "punch";
+      ai.attackHeight = "mid";
+      ai.attackTimer = 15;
+      ai.punchCooldown = 20;
+      playSfx("punch");
+      return true;
+    }
 
-  if (attackType === "kick" && ai.kickCooldown === 0) {
-    ai.attacking = true;
-    ai.attackType = "kick";
-    ai.attackHeight = "overhead";
-    ai.attackTimer = 15;
-    ai.kickCooldown = 40;
-    return true;
-  }
+    if (attackType === "kick" && ai.kickCooldown === 0) {
+      ai.attacking = true;
+      ai.attackType = "kick";
+      ai.attackHeight = "overhead";
+      ai.attackTimer = 15;
+      ai.kickCooldown = 40;
+      playSfx("kick");
+      return true;
+    }
 
-  if (attackType === "sweep" && ai.sweepCooldown === 0) {
-    ai.attacking = true;
+    if (attackType === "sweep" && ai.sweepCooldown === 0) {
+      ai.attacking = true;
     ai.attackType = "sweep";
-    ai.attackHeight = "low";
-    ai.attackTimer = 15;
-    ai.sweepCooldown = 50;
-    ai.ducking = true;
-    return true;
-  }
+      ai.attackHeight = "low";
+      ai.attackTimer = 15;
+      ai.sweepCooldown = 50;
+      ai.ducking = true;
+      playSfx("sweep");
+      return true;
+    }
 
-  if (attackType === "uppercut" && ai.upperCooldown === 0) {
-    ai.attacking = true;
-    ai.attackType = "uppercut";
-    ai.attackHeight = "high";
-    ai.attackTimer = 15;
-    ai.upperCooldown = 60;
-    return true;
-  }
+    if (attackType === "uppercut" && ai.upperCooldown === 0) {
+      ai.attacking = true;
+      ai.attackType = "uppercut";
+      ai.attackHeight = "high";
+      ai.attackTimer = 15;
+      ai.upperCooldown = 60;
+      playSfx("uppercut");
+      return true;
+    }
 
   return false;
 };
@@ -1425,10 +1549,10 @@ const beginProjectile = (ai) => {
   const projY = ai.y + 25;
   let cooldown = 2500;
 
-  if (ai.type === "fire") {
-    projectiles.current.push({
-      x: projX,
-      y: projY,
+    if (ai.type === "fire") {
+      projectiles.current.push({
+        x: projX,
+        y: projY,
       vx: ai.facing * 8,
       owner: ai,
       team: ai.team,
@@ -1436,12 +1560,13 @@ const beginProjectile = (ai) => {
       attackHeight: "high",
       color: ai.color,
       radius: 8,
-    });
-    cooldown = 900;
-  } else if (ai.type === "psychic") {
-    projectiles.current.push({
-      x: projX,
-      y: projY,
+      });
+      cooldown = 900;
+      playSfx("fireball");
+    } else if (ai.type === "psychic") {
+      projectiles.current.push({
+        x: projX,
+        y: projY,
       vx: ai.facing * 8,
       owner: ai,
       team: ai.team,
@@ -1449,12 +1574,13 @@ const beginProjectile = (ai) => {
       attackHeight: "high",
       color: "#a855f7",
       radius: 8,
-    });
-    cooldown = 1800;
-  } else if (ai.type === "electric") {
-    ai.spearLocked = true;
-    projectiles.current.push({
-      x: projX,
+      });
+      cooldown = 1800;
+      playSfx("purple_damage");
+    } else if (ai.type === "electric") {
+      ai.spearLocked = true;
+      projectiles.current.push({
+        x: projX,
       y: projY,
       vx: ai.facing * 20,
       owner: ai,
@@ -1462,12 +1588,13 @@ const beginProjectile = (ai) => {
       type: "yellowspear",
       attackHeight: "mid",
       color: "#facc15",
-      radius: 7,
-    });
-    cooldown = 5000;
-  } else if (ai.type === "explosion") {
-    [-16, 0, 16].forEach((offset) => {
-      projectiles.current.push({
+        radius: 7,
+      });
+      cooldown = 5000;
+      playSfx("yellow_spear");
+    } else if (ai.type === "explosion") {
+      [-16, 0, 16].forEach((offset) => {
+        projectiles.current.push({
         x: projX + ai.facing * (offset + 18),
         y: projY,
         vx: ai.facing * 8,
@@ -1477,12 +1604,13 @@ const beginProjectile = (ai) => {
         attackHeight: "high",
         color: "#f97316",
         radius: 8,
+        });
       });
-    });
-    cooldown = 5000;
-  } else if (ai.type === "ice") {
-    projectiles.current.push({
-      x: projX,
+      cooldown = 5000;
+      playSfx("orange_triple");
+    } else if (ai.type === "ice") {
+      projectiles.current.push({
+        x: projX,
       y: projY,
       vx: ai.facing * 7,
       owner: ai,
@@ -1490,12 +1618,13 @@ const beginProjectile = (ai) => {
       type: "iceball",
       attackHeight: "high",
       color: "#60a5fa",
-      radius: 8,
-    });
-    cooldown = 4200;
-  } else if (ai.type === "poison") {
-    projectiles.current.push({
-      x: projX,
+        radius: 8,
+      });
+      cooldown = 4200;
+      playSfx("iceball");
+    } else if (ai.type === "poison") {
+      projectiles.current.push({
+        x: projX,
       y: projY,
       vx: ai.facing * 4,
       owner: ai,
@@ -1503,12 +1632,13 @@ const beginProjectile = (ai) => {
       type: "poisonorb",
       attackHeight: "mid",
       color: "#4ade80",
-      radius: 10,
-    });
-    cooldown = 2200;
-  } else if (ai.type === "light") {
-    projectiles.current.push({
-      x: projX,
+        radius: 10,
+      });
+      cooldown = 2200;
+      playSfx("poisonball");
+    } else if (ai.type === "light") {
+      projectiles.current.push({
+        x: projX,
       y: ai.y + 48,
       vx: ai.facing * 8,
       vy: 0,
@@ -1517,12 +1647,13 @@ const beginProjectile = (ai) => {
       type: "whiteball",
       attackHeight: "low",
       color: "#f8fafc",
-      radius: 8,
-    });
-    cooldown = 900;
-  } else {
-    projectiles.current.push({
-      x: projX,
+        radius: 8,
+      });
+      cooldown = 900;
+      playSfx("white_low");
+    } else {
+      projectiles.current.push({
+        x: projX,
       y: projY,
       vx: ai.facing * 10,
       owner: ai,
@@ -1530,10 +1661,11 @@ const beginProjectile = (ai) => {
       type: "blackball",
       attackHeight: "mid",
       color: ai.color,
-      radius: 8,
-    });
-    cooldown = 2200;
-  }
+        radius: 8,
+      });
+      cooldown = 2200;
+      playSfx("voidball");
+    }
 
   ai.canProjectile = false;
   setManagedTimeout(() => {
@@ -1553,6 +1685,7 @@ const beginRedDash = (ai) => {
   ai.attackTimer = 25;
   ai.dashTimer = 25;
   ai.dashHasHit = false;
+  playSfx("dash");
 
   ai.canSpecial2 = false;
   setManagedTimeout(() => {
@@ -1576,6 +1709,7 @@ const beginIceSlowOrb = (ai) => {
     color: "#93c5fd",
     radius: 12,
   });
+  playSfx("sloworb");
 
   ai.canSpecial2 = false;
   setManagedTimeout(() => {
@@ -1604,6 +1738,7 @@ const beginWhiteDrop = (ai, target) => {
     radius: 12,
     knockbackDir,
   });
+  playSfx("white_drop");
 
   ai.canSpecial2 = false;
   setManagedTimeout(() => {
@@ -1641,6 +1776,7 @@ const beginYellowReflect = (ai) => {
   ai.reflecting = true;
   ai.reflectTimer = 60;
   ai.canSpecial2 = false;
+  playSfx("reflect");
 
   setManagedTimeout(() => {
     ai.canSpecial2 = true;
@@ -1663,6 +1799,7 @@ const beginOrangeOrb = (ai) => {
     color: "#fb923c",
     radius: 12,
   });
+  playSfx("orange_orb");
 
   ai.canSpecial2 = false;
   setManagedTimeout(() => {
@@ -1683,6 +1820,7 @@ const beginPoisonHeal = (ai) => {
   ai.attackHeight = "";
   ai.healing = true;
   ai.healTickTimer = ai.healTickTimer || 40;
+  playSfx("heal");
 
   ai.canSpecial2 = false;
   setManagedTimeout(() => {
@@ -1699,6 +1837,7 @@ const beginVoidCharge = (ai) => {
   ai.charging = true;
   ai.chargeFrames = 0;
   ai.vx = 0;
+  playSfx("charge_start");
 
   ai.canSpecial2 = false;
   return true;
@@ -1721,6 +1860,7 @@ const releaseVoidCharge = (ai) => {
     radius: 8 + Math.min(ai.chargeFrames / 30, 8),
     damage: chargeDamage,
   });
+  playSfx("chargeball");
 
   ai.charging = false;
   ai.chargeFrames = 0;
@@ -2534,6 +2674,7 @@ if (hpW > 0) {
 
       if (p.type === "poison" && binds.special2) {
         const wantsHeal = !!keysPressed.current[binds.special2] && !p.specialDisabled && !p.frozen && p.health < 100;
+        if (wantsHeal && !p.healing) playSfx("heal");
         p.healing = wantsHeal;
         if (p.healing && !p.healTickTimer) p.healTickTimer = 120;
       }
@@ -2614,6 +2755,7 @@ if (hpW > 0) {
             p.attackHeight = "high";
             p.attackTimer = 15;
             p.upperCooldown = 60;
+            playSfx("uppercut");
             keysPressed.current[binds.punch] = false;
           } else if (!p.ducking && p.punchCooldown === 0) {
             p.attacking = true;
@@ -2621,6 +2763,7 @@ if (hpW > 0) {
             p.attackHeight = "mid";
             p.attackTimer = 15;
             p.punchCooldown = 20;
+            playSfx("punch");
             keysPressed.current[binds.punch] = false;
           }
         }
@@ -2632,6 +2775,7 @@ if (hpW > 0) {
             p.attackHeight = "low";
             p.attackTimer = 15;
             p.sweepCooldown = 50;
+            playSfx("sweep");
             keysPressed.current[binds.kick] = false;
           } else if (!p.ducking && p.kickCooldown === 0) {
             p.attacking = true;
@@ -2639,6 +2783,7 @@ if (hpW > 0) {
             p.attackHeight = "overhead";
             p.attackTimer = 15;
             p.kickCooldown = 40;
+            playSfx("kick");
             keysPressed.current[binds.kick] = false;
           }
         }
@@ -2655,30 +2800,38 @@ if (hpW > 0) {
 
           if (p.type === "fire") {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 8, owner: p, team: p.team, type: "fireball", attackHeight: "high", color: p.color, radius: 8 });
+            playSfx("fireball");
             cooldown = 500;
           } else if (p.type === "psychic") {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 8, owner: p, team: p.team, type: "purpleball", attackHeight: "high", color: "#a855f7", radius: 8 });
+            playSfx("purple_damage");
             cooldown = 1000;
           } else if (p.type === "electric") {
             p.spearLocked = true;
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 20, owner: p, team: p.team, type: "yellowspear", attackHeight: "mid", color: "#facc15", radius: 7 });
+            playSfx("yellow_spear");
             cooldown = 5000;
           } else if (p.type === "explosion") {
             [-16, 0, 16].forEach((offset) => {
               projectiles.current.push({ x: projX + p.facing * (offset + 18), y: projY, vx: p.facing * 8, owner: p, team: p.team, type: "orangeball", attackHeight: "high", color: "#f97316", radius: 8 });
             });
+            playSfx("orange_triple");
             cooldown = 5000;
           } else if (p.type === "ice") {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 7, owner: p, team: p.team, type: "iceball", attackHeight: "high", color: "#60a5fa", radius: 8 });
+            playSfx("iceball");
             cooldown = 5000;
           } else if (p.type === "poison") {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 4, owner: p, team: p.team, type: "poisonorb", attackHeight: "mid", color: "#4ade80", radius: 10 });
+            playSfx("poisonball");
             cooldown = 2500;
           } else if (p.type === "light") {
             projectiles.current.push({ x: projX, y: p.y + 48, vx: p.facing * 8, vy: 0, owner: p, team: p.team, type: "whiteball", attackHeight: "low", color: "#f8fafc", radius: 8 });
+            playSfx("white_low");
             cooldown = 500;
           } else {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 10, owner: p, team: p.team, type: "blackball", attackHeight: "mid", color: p.color, radius: 8 });
+            playSfx("voidball");
             cooldown = 2500;
           }
 
@@ -2696,11 +2849,13 @@ if (hpW > 0) {
               p.attackTimer = 25;
               p.dashTimer = 25;
               p.dashHasHit = false;
+              playSfx("dash");
               p.canSpecial2 = false;
               setManagedTimeout(() => (p.canSpecial2 = true), 2000);
               keysPressed.current[binds.special2] = false;
             } else if (p.type === "ice") {
               projectiles.current.push({ x: p.x + (p.facing > 0 ? p.width : 0), y: p.y + 25, vx: p.facing * 2.2, owner: p, team: p.team, type: "sloworb", attackHeight: "mid", color: "#93c5fd", radius: 12 });
+              playSfx("sloworb");
               p.canSpecial2 = false;
               setManagedTimeout(() => (p.canSpecial2 = true), 10000);
               keysPressed.current[binds.special2] = false;
@@ -2723,11 +2878,13 @@ if (hpW > 0) {
               p.ducking = false;
               p.reflecting = true;
               p.reflectTimer = 60;
+              playSfx("reflect");
               p.canSpecial2 = false;
               setManagedTimeout(() => (p.canSpecial2 = true), 3000);
               keysPressed.current[binds.special2] = false;
             } else if (p.type === "explosion") {
               projectiles.current.push({ x: p.x + (p.facing > 0 ? p.width : 0), y: p.y + 25, vx: p.facing * 2.2, owner: p, team: p.team, type: "orangeorb", attackHeight: "mid", color: "#fb923c", radius: 12 });
+              playSfx("orange_orb");
               p.canSpecial2 = false;
               setManagedTimeout(() => (p.canSpecial2 = true), 10000);
               keysPressed.current[binds.special2] = false;
@@ -2737,6 +2894,7 @@ if (hpW > 0) {
                 const dropX = target.x + target.width / 2;
                 const knockbackDir = dropX >= p.x + p.width / 2 ? 1 : -1;
                 projectiles.current.push({ x: dropX, y: -40, vx: 0, vy: 13, owner: p, team: p.team, type: "whitedrop", attackHeight: "overhead", color: "#f8fafc", radius: 12, knockbackDir });
+                playSfx("white_drop");
                 p.canSpecial2 = false;
                 setManagedTimeout(() => (p.canSpecial2 = true), 4500);
                 keysPressed.current[binds.special2] = false;
@@ -2745,6 +2903,7 @@ if (hpW > 0) {
               if (!p.charging) {
                 p.charging = true;
                 p.chargeFrames = 0;
+                playSfx("charge_start");
               }
             }
           }
@@ -2764,6 +2923,7 @@ if (hpW > 0) {
             radius: 8 + Math.min(p.chargeFrames / 30, 8),
             damage: chargeDamage,
           });
+          playSfx("chargeball");
           p.charging = false;
           p.chargeFrames = 0;
           p.canSpecial2 = false;
@@ -2787,6 +2947,7 @@ if (hpW > 0) {
           radius: 8 + Math.min(p.chargeFrames / 30, 8),
           damage: chargeDamage,
         });
+        playSfx("chargeball");
         p.charging = false;
         p.chargeFrames = 0;
         p.canSpecial2 = false;
@@ -2817,6 +2978,7 @@ if (hpW > 0) {
           p.purpleCharging = false;
           p.purpleChargeTimer = 0;
           p.speedBoostTimer = 480;
+          playSfx("purple_boost");
         }
       }
 
@@ -3490,6 +3652,9 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 if (blocked) {
                   actualDamage = Math.floor(actualDamage * 0.25);
                   knockback = Math.floor(knockback * 0.3);
+                  playSfx("block");
+                } else if (actualDamage > 0) {
+                  playSfx("hit");
                 }
 
                 target.health -= actualDamage;
@@ -3986,6 +4151,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 color={c}
                 selected={p1Color === c}
                 onClick={() => {
+                  playSfx("menu_select");
                   setP1Color(c);
 
                   if (mode === "ladder") {
@@ -4026,6 +4192,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 color={c}
                 selected={opp1Color === c}
                 onClick={() => {
+                  playSfx("menu_select");
                   setOpp1Color(c);
                   setManagedTimeout(() => proceedAfterOpp1(), 0);
                 }}
@@ -4036,6 +4203,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
           <button
             onClick={() => {
+              playSfx("menu_back");
               setOpp1Color(null);
               if (mode === "coop") setMenuStep("p2");
               else setMenuStep("p1");
@@ -4063,6 +4231,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 color={c}
                 selected={opp2Color === c}
                 onClick={() => {
+                  playSfx("menu_select");
                   setOpp2Color(c);
                   setManagedTimeout(() => proceedAfterOpp2(), 0);
                 }}
@@ -4073,6 +4242,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
           <button
             onClick={() => {
+              playSfx("menu_back");
               setOpp2Color(null);
               setMenuStep("opp1");
             }}
@@ -4099,6 +4269,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 color={c}
                 selected={p2Color === c}
                 onClick={() => {
+                  playSfx("menu_select");
                   setP2Color(c);
                   setManagedTimeout(() => proceedAfterP2(), 0);
                 }}
@@ -4109,6 +4280,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
           <button
             onClick={() => {
+              playSfx("menu_back");
               setP2Color(null);
               setMenuStep("p1");
             }}
@@ -4137,6 +4309,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
               <button
                 key={name}
                 onClick={() => {
+                  playSfx("menu_select");
                   setDifficulty(name);
                   setManagedTimeout(() => proceedAfterDifficulty(), 0);
                 }}
@@ -4151,6 +4324,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
           <button
             onClick={() => {
+              playSfx("menu_back");
               setDifficulty(null);
               if (mode === "single") setMenuStep("opp1");
               else if (mode === "coop") setMenuStep("opp2");
@@ -4185,6 +4359,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
               <button
                 key={s.key}
                 onClick={() => {
+                  playSfx("menu_select");
   setStage(s.key);
 
   if (!document.fullscreenElement) {
@@ -4221,6 +4396,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
           <button
             onClick={() => {
+              playSfx("menu_back");
               setStage(null);
               if (mode === "practice") setMenuStep("opp1");
               else if (mode === "single") setMenuStep("difficulty");
