@@ -360,7 +360,18 @@ const toggleFullscreen = async () => {
 
   const randPick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const randStage = () => randPick(["default", "recursion"]);
-  const randColor = () => randPick(["red", "blue", "green", "black"]);
+  const FIGHTER_COLORS = ["red", "blue", "green", "black", "white"];
+  const randColor = () => randPick(FIGHTER_COLORS);
+  const fighterNote = (c) =>
+    c === "red"
+      ? "Fire & Dash"
+      : c === "blue"
+      ? "Ice Control"
+      : c === "green"
+      ? "Poison & Heal"
+      : c === "black"
+      ? "Void & Charge"
+      : "Low Light & Drop";
   const shuffle = (arr) => {
     const a = [...arr];
     for (let i = a.length - 1; i > 0; i--) {
@@ -431,10 +442,10 @@ const toggleFullscreen = async () => {
 
     if (mode === "ladder") {
       const idx = ladderIndex;
-      const isLast = idx === 3;
+      const isLast = idx === 4;
 
       const oppColor = isLast ? p1Color : ladderOppOrder[idx];
-      const diffByStep = ["easy", "medium", "hard", "hard"][idx] || "medium";
+      const diffByStep = ["easy", "medium", "medium", "hard", "hard"][idx] || "medium";
 
       return {
         ...base,
@@ -585,7 +596,7 @@ const toggleFullscreen = async () => {
     const GRAVITY = 1.2;
     const JUMP_DISTANCE = 120;
 
-    const DARK_VARIANT = { red: "#b91c1c", blue: "#1d4ed8", green: "#15803d", black: "#4b5563" };
+    const DARK_VARIANT = { red: "#b91c1c", blue: "#1d4ed8", green: "#15803d", black: "#4b5563", white: "#cbd5e1" };
 
     const toRGBA = (hex, a) => {
       const h = hex.replace("#", "");
@@ -606,6 +617,8 @@ const toggleFullscreen = async () => {
             return { hex: "#22c55e", name: "Green", type: "poison" };
           case "black":
             return { hex: "#1f2937", name: "Black", type: "void" };
+          case "white":
+            return { hex: "#f8fafc", name: "White", type: "light" };
           default:
             return { hex: "#ef4444", name: "Red", type: "fire" };
         }
@@ -1057,6 +1070,17 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
           knockback = 15;
           hitstunFrames = 12;
           break;
+        case "whiteball":
+          damage = 5;
+          knockback = 15;
+          hitstunFrames = 12;
+          break;
+        case "whitedrop":
+          damage = 7;
+          knockback = 8;
+          launchUp = true;
+          hitstunFrames = 18;
+          break;
         case "iceball":
           damage = 2;
           knockback = 4;
@@ -1291,6 +1315,20 @@ const beginProjectile = (ai) => {
       radius: 10,
     });
     cooldown = 2200;
+  } else if (ai.type === "light") {
+    projectiles.current.push({
+      x: projX,
+      y: ai.y + 48,
+      vx: ai.facing * 8,
+      vy: 0,
+      owner: ai,
+      team: ai.team,
+      type: "whiteball",
+      attackHeight: "low",
+      color: "#f8fafc",
+      radius: 8,
+    });
+    cooldown = 900;
   } else {
     projectiles.current.push({
       x: projX,
@@ -1352,6 +1390,34 @@ const beginIceSlowOrb = (ai) => {
   setManagedTimeout(() => {
     ai.canSpecial2 = true;
   }, 9000);
+
+  return true;
+};
+
+const beginWhiteDrop = (ai, target) => {
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || !target) return false;
+
+  const dropX = target.x + target.width / 2;
+  const knockbackDir = dropX >= centerX(ai) ? 1 : -1;
+
+  projectiles.current.push({
+    x: dropX,
+    y: -40,
+    vx: 0,
+    vy: 13,
+    owner: ai,
+    team: ai.team,
+    type: "whitedrop",
+    attackHeight: "overhead",
+    color: "#f8fafc",
+    radius: 12,
+    knockbackDir,
+  });
+
+  ai.canSpecial2 = false;
+  setManagedTimeout(() => {
+    ai.canSpecial2 = true;
+  }, 4500);
 
   return true;
 };
@@ -1422,16 +1488,22 @@ const getIncomingProjectile = (ai) => {
   return projectiles.current.find((proj) => {
     if (proj.team === ai.team) return false;
 
-    const projectileMovingTowardAI =
-      (proj.vx > 0 && proj.x < aiCenter) ||
-      (proj.vx < 0 && proj.x > aiCenter);
-
-    if (!projectileMovingTowardAI) return false;
-
     const xDist = Math.abs(proj.x - aiCenter);
     const yDist = Math.abs(proj.y - centerY(ai));
 
-    return xDist < aiSettings.projectileReactRange && yDist < 70;
+    const horizontalThreat =
+      ((proj.vx > 0 && proj.x < aiCenter) ||
+        (proj.vx < 0 && proj.x > aiCenter)) &&
+      xDist < aiSettings.projectileReactRange &&
+      yDist < 70;
+
+    const verticalThreat =
+      (proj.vy || 0) > 0 &&
+      proj.y < centerY(ai) &&
+      xDist < 55 &&
+      yDist < aiSettings.projectileReactRange;
+
+    return horizontalThreat || verticalThreat;
   });
 };
 
@@ -1711,6 +1783,30 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
 ) {
   if (tryJumpToPlatform(ai, opp)) return;
 }
+
+  if (
+    ai.type === "light" &&
+    ai.canSpecial2 &&
+    !ai.specialDisabled &&
+    abs < 560 &&
+    rand() < aiSettings.specialChance &&
+    (targetVulnerable || opp.blocking || abs < 250 || !opp.grounded)
+  ) {
+    if (beginWhiteDrop(ai, opp)) return;
+  }
+
+  if (
+    ai.type === "light" &&
+    ai.canProjectile &&
+    !ai.specialDisabled &&
+    sameLane &&
+    abs > 90 &&
+    abs < 430 &&
+    rand() < aiSettings.specialChance &&
+    (targetVulnerable || (opp.blocking && !opp.ducking) || abs > 190)
+  ) {
+    if (beginProjectile(ai)) return;
+  }
 
   if (
     ai.type === "poison" &&
@@ -2202,6 +2298,9 @@ if (hpW > 0) {
           } else if (p.type === "poison") {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 4, owner: p, team: p.team, type: "poisonorb", attackHeight: "mid", color: "#4ade80", radius: 10 });
             cooldown = 2500;
+          } else if (p.type === "light") {
+            projectiles.current.push({ x: projX, y: p.y + 48, vx: p.facing * 8, vy: 0, owner: p, team: p.team, type: "whiteball", attackHeight: "low", color: "#f8fafc", radius: 8 });
+            cooldown = 500;
           } else {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 10, owner: p, team: p.team, type: "blackball", attackHeight: "mid", color: p.color, radius: 8 });
             cooldown = 2500;
@@ -2229,6 +2328,16 @@ if (hpW > 0) {
               p.canSpecial2 = false;
               setManagedTimeout(() => (p.canSpecial2 = true), 10000);
               keysPressed.current[binds.special2] = false;
+            } else if (p.type === "light") {
+              const target = getNearestEnemy(p);
+              if (target) {
+                const dropX = target.x + target.width / 2;
+                const knockbackDir = dropX >= p.x + p.width / 2 ? 1 : -1;
+                projectiles.current.push({ x: dropX, y: -40, vx: 0, vy: 13, owner: p, team: p.team, type: "whitedrop", attackHeight: "overhead", color: "#f8fafc", radius: 12, knockbackDir });
+                p.canSpecial2 = false;
+                setManagedTimeout(() => (p.canSpecial2 = true), 4500);
+                keysPressed.current[binds.special2] = false;
+              }
             } else if (p.type === "void") {
               if (!p.charging) {
                 p.charging = true;
@@ -2506,8 +2615,8 @@ if (p.aiBlockHoldTimer > 0) {
       ctx.beginPath();
       ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = proj.type === "whiteball" || proj.type === "whitedrop" ? "#000000" : "rgba(255, 255, 255, 0.6)";
+      ctx.lineWidth = proj.type === "whiteball" || proj.type === "whitedrop" ? 3 : 2;
       ctx.stroke();
     };
 
@@ -2782,6 +2891,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
         for (let i = projectiles.current.length - 1; i >= 0; i--) {
           const proj = projectiles.current[i];
           proj.x += proj.vx;
+          proj.y += proj.vy || 0;
 
           let hitSomeone = false;
           for (const target of fighters) {
@@ -2820,12 +2930,12 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
               } else if (proj.type === "sloworb") {
   applyDamage(proj.owner, target, "sloworb", {
     attackHeight: proj.attackHeight,
-    knockbackDir: Math.sign(proj.vx) || 1,
+    knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
   });
 } else {
   applyDamage(proj.owner, target, proj.type, {
     attackHeight: proj.attackHeight,
-    knockbackDir: Math.sign(proj.vx) || 1,
+    knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
   });
 }
 
@@ -2838,7 +2948,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
           }
           if (hitSomeone) continue;
 
-          if (proj.x < -50 || proj.x > WORLD_W + 50) projectiles.current.splice(i, 1);
+          if (proj.x < -50 || proj.x > WORLD_W + 50 || proj.y < -90 || proj.y > WORLD_H + 90) projectiles.current.splice(i, 1);
         }
 
         checkRoundEndByHP();
@@ -3131,52 +3241,57 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
     </div>
   );
 
-  const ColorCard = ({ color, selected, onClick, note }) => (
-    <button
-      onClick={onClick}
-      className="group relative bg-white border rounded-3xl p-10 hover:scale-[0.98] active:scale-95 transition-all duration-150"
-      style={{
-        boxShadow:
-          selected
-            ? `0 15px 40px ${
-                color === "red"
-                  ? "rgba(239, 68, 68, 0.2)"
-                  : color === "blue"
-                  ? "rgba(59, 130, 246, 0.2)"
-                  : color === "green"
-                  ? "rgba(34, 197, 94, 0.2)"
-                  : "rgba(31, 41, 55, 0.2)"
-              }`
-            : "0 10px 30px rgba(0, 0, 0, 0.05)",
-        borderColor:
-          selected
-            ? color === "red"
-              ? "#ef4444"
-              : color === "blue"
-              ? "#3b82f6"
-              : color === "green"
-              ? "#22c55e"
-              : "#1f2937"
-            : "#f3f4f6",
-      }}
-    >
-      <div className="mb-6">
-        <div
-          className={`w-24 h-32 rounded-2xl mx-auto border-4 ${
-            color === "red"
-              ? "bg-red-500 border-red-600"
-              : color === "blue"
-              ? "bg-blue-500 border-blue-600"
-              : color === "green"
-              ? "bg-green-500 border-green-600"
-              : "bg-gray-800 border-black"
-          }`}
-        />
-      </div>
-      <h2 className="text-2xl font-light text-gray-900 mb-2 capitalize">{color}</h2>
-      <p className="text-xs font-light text-gray-500">{note}</p>
-    </button>
-  );
+  const ColorCard = ({ color, selected, onClick, note }) => {
+    const glow =
+      color === "red"
+        ? "rgba(239, 68, 68, 0.2)"
+        : color === "blue"
+        ? "rgba(59, 130, 246, 0.2)"
+        : color === "green"
+        ? "rgba(34, 197, 94, 0.2)"
+        : color === "white"
+        ? "rgba(17, 24, 39, 0.12)"
+        : "rgba(31, 41, 55, 0.2)";
+
+    const border =
+      color === "red"
+        ? "#ef4444"
+        : color === "blue"
+        ? "#3b82f6"
+        : color === "green"
+        ? "#22c55e"
+        : color === "white"
+        ? "#111827"
+        : "#1f2937";
+
+    const bodyClass =
+      color === "red"
+        ? "bg-red-500 border-red-600"
+        : color === "blue"
+        ? "bg-blue-500 border-blue-600"
+        : color === "green"
+        ? "bg-green-500 border-green-600"
+        : color === "white"
+        ? "bg-white border-gray-900"
+        : "bg-gray-800 border-black";
+
+    return (
+      <button
+        onClick={onClick}
+        className="group relative bg-white border rounded-3xl p-10 hover:scale-[0.98] active:scale-95 transition-all duration-150"
+        style={{
+          boxShadow: selected ? `0 15px 40px ${glow}` : "0 10px 30px rgba(0, 0, 0, 0.05)",
+          borderColor: selected ? border : "#f3f4f6",
+        }}
+      >
+        <div className="mb-6">
+          <div className={`w-24 h-32 rounded-2xl mx-auto border-4 ${bodyClass}`} />
+        </div>
+        <h2 className="text-2xl font-light text-gray-900 mb-2 capitalize">{color}</h2>
+        <p className="text-xs font-light text-gray-500">{note}</p>
+      </button>
+    );
+  };
 
   if (mode === "home") {
     return (
@@ -3249,8 +3364,8 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
               : "Ladder — Pick your fighter"}
           </p>
 
-          <div className="grid grid-cols-4 gap-6">
-            {["red", "blue", "green", "black"].map((c) => (
+          <div className="grid grid-cols-5 gap-6">
+            {FIGHTER_COLORS.map((c) => (
               <ColorCard
                 key={c}
                 color={c}
@@ -3259,13 +3374,13 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   setP1Color(c);
 
                   if (mode === "ladder") {
-                    const others = ["red", "blue", "green", "black"].filter((x) => x !== c);
+                    const others = FIGHTER_COLORS.filter((x) => x !== c);
                     setLadderOppOrder(shuffle(others));
                   }
 
                   setManagedTimeout(() => proceedAfterP1(), 0);
                 }}
-                note={c === "red" ? "Fire & Dash" : c === "blue" ? "Ice Control" : c === "green" ? "Poison & Heal" : "Void & Charge"}
+                note={fighterNote(c)}
               />
             ))}
           </div>
@@ -3289,8 +3404,8 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
           <h1 className="text-6xl font-light text-gray-900 mb-4">{title}</h1>
           <p className="text-xl font-light text-gray-500 mb-10">{subtitle}</p>
 
-          <div className="grid grid-cols-4 gap-6">
-            {["red", "blue", "green", "black"].map((c) => (
+          <div className="grid grid-cols-5 gap-6">
+            {FIGHTER_COLORS.map((c) => (
               <ColorCard
                 key={c}
                 color={c}
@@ -3299,7 +3414,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   setOpp1Color(c);
                   setManagedTimeout(() => proceedAfterOpp1(), 0);
                 }}
-                note={c === "red" ? "Fire" : c === "blue" ? "Ice" : c === "green" ? "Poison" : "Void"}
+                note={fighterNote(c)}
               />
             ))}
           </div>
@@ -3326,8 +3441,8 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
           <h1 className="text-6xl font-light text-gray-900 mb-4">Choose Opponent 2</h1>
           <p className="text-xl font-light text-gray-500 mb-10">Pick the AI Fighter 2</p>
 
-          <div className="grid grid-cols-4 gap-6">
-            {["red", "blue", "green", "black"].map((c) => (
+          <div className="grid grid-cols-5 gap-6">
+            {FIGHTER_COLORS.map((c) => (
               <ColorCard
                 key={c}
                 color={c}
@@ -3336,7 +3451,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   setOpp2Color(c);
                   setManagedTimeout(() => proceedAfterOpp2(), 0);
                 }}
-                note={c === "red" ? "Fire" : c === "blue" ? "Ice" : c === "green" ? "Poison" : "Void"}
+                note={fighterNote(c)}
               />
             ))}
           </div>
@@ -3362,8 +3477,8 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
           <h1 className="text-6xl font-light text-gray-900 mb-4">Choose Player 2</h1>
           <p className="text-xl font-light text-gray-500 mb-10">{mode === "offline" ? "Offline 1v1 — Pick P2 Fighter" : "2v2 — Pick P2 Fighter"}</p>
 
-          <div className="grid grid-cols-4 gap-6">
-            {["red", "blue", "green", "black"].map((c) => (
+          <div className="grid grid-cols-5 gap-6">
+            {FIGHTER_COLORS.map((c) => (
               <ColorCard
                 key={c}
                 color={c}
@@ -3372,7 +3487,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   setP2Color(c);
                   setManagedTimeout(() => proceedAfterP2(), 0);
                 }}
-                note={c === "red" ? "Fire & Dash" : c === "blue" ? "Ice Control" : c === "green" ? "Poison & Heal" : "Void & Charge"}
+                note={fighterNote(c)}
               />
             ))}
           </div>
@@ -3490,7 +3605,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
   }
 
   if (menuStep === "playing") {
-    const ladderLabel = mode === "ladder" ? `Ladder Match ${ladderIndex + 1} / 4` : null;
+    const ladderLabel = mode === "ladder" ? `Ladder Match ${ladderIndex + 1} / 5` : null;
 
     const onExit = () => {
       goHome();
@@ -3501,7 +3616,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
       if (matchWinnerText === "Team 1") {
         const next = ladderIndex + 1;
-        if (next >= 4) {
+        if (next >= 5) {
           setLadderWin(true);
           setMenuStep("ladder_result");
           return;
