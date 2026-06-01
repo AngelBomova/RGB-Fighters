@@ -758,11 +758,11 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
           ]
         : [
             { x: 0, y: BOTTOM_GROUND, width: WORLD_W, height: 20 },
-            { x: 65, y: 330, width: 180, height: 20 },
-            { x: 660, y: 310, width: 180, height: 20 },
-            { x: 330, y: 265, width: 240, height: 20 },
-            { x: 145, y: 190, width: 170, height: 20 },
-            { x: 585, y: 165, width: 170, height: 20 },
+            { x: 35, y: 350, width: 175, height: 20 },
+            { x: 690, y: 350, width: 175, height: 20 },
+            { x: 165, y: 260, width: 180, height: 20 },
+            { x: 555, y: 260, width: 180, height: 20 },
+            { x: 360, y: 145, width: 180, height: 20 },
           ];
 
     const makeFighter = (opts) => {
