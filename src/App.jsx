@@ -2106,7 +2106,7 @@ const updateAI = (ai) => {
     ai.reflecting = false;
     ai.reflectTimer = 0;
     ai.spearLocked = false;
-    ai.vx = 0;
+    if (ai.frozen || ai.spearStunned) ai.vx = 0;
     return;
   }
 
