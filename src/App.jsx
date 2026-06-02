@@ -64,6 +64,27 @@ const toggleFullscreen = async () => {
   const musicAudioRef = useRef({});
   const currentMusicRef = useRef("");
   const audioUnlockedRef = useRef(false);
+  const [musicReady, setMusicReady] = useState(false);
+  const [musicVolume, setMusicVolume] = useState(() => {
+    try {
+      const raw = localStorage.getItem("rgb_fighters_music_volume_v1") ?? localStorage.getItem("rgb_fighters_master_volume_v1");
+      const parsed = raw == null ? 50 : Number(raw);
+      return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 50;
+    } catch {
+      return 50;
+    }
+  });
+  const [sfxVolume, setSfxVolume] = useState(() => {
+    try {
+      const raw = localStorage.getItem("rgb_fighters_sfx_volume_v1") ?? localStorage.getItem("rgb_fighters_master_volume_v1");
+      const parsed = raw == null ? 50 : Number(raw);
+      return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 50;
+    } catch {
+      return 50;
+    }
+  });
+  const musicVolumeRef = useRef(musicVolume);
+  const sfxVolumeRef = useRef(sfxVolume);
 
   const timeoutsRef = useRef([]);
   const setManagedTimeout = (fn, ms) => {
@@ -180,6 +201,29 @@ const toggleFullscreen = async () => {
   }, [p2Binds]);
 
   useEffect(() => {
+    musicVolumeRef.current = musicVolume;
+    try {
+      localStorage.setItem("rgb_fighters_music_volume_v1", String(musicVolume));
+    } catch {}
+
+    for (const audio of Object.values(musicAudioRef.current)) {
+      audio.volume = 0.35 * (musicVolume / 100);
+    }
+
+    const activeName = currentMusicRef.current;
+    if (activeName && musicAudioRef.current[activeName]) {
+      musicAudioRef.current[activeName].volume = 0.35 * (musicVolume / 100);
+    }
+  }, [musicVolume]);
+
+  useEffect(() => {
+    sfxVolumeRef.current = sfxVolume;
+    try {
+      localStorage.setItem("rgb_fighters_sfx_volume_v1", String(sfxVolume));
+    } catch {}
+  }, [sfxVolume]);
+
+  useEffect(() => {
     if (Object.keys(musicAudioRef.current).length) return;
 
     const musicNames = {
@@ -198,12 +242,13 @@ const toggleFullscreen = async () => {
       if (!url) continue;
       const audio = new Audio(url);
       audio.loop = true;
-      audio.volume = 0.35;
+      audio.volume = 0.35 * (musicVolumeRef.current / 100);
       audio.preload = "auto";
       tracks[key] = audio;
     }
 
     musicAudioRef.current = tracks;
+    setMusicReady(true);
   }, []);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -263,7 +308,7 @@ const toggleFullscreen = async () => {
       currentMusicRef.current = name;
     }
 
-    audio.volume = 0.35;
+    audio.volume = 0.35 * (musicVolumeRef.current / 100);
     audio.loop = true;
     if (audio.paused) audio.currentTime = 0;
     audio.play().catch(() => {});
@@ -275,7 +320,7 @@ const toggleFullscreen = async () => {
 
     try {
       const audio = new Audio(url);
-      audio.volume = 0.65;
+      audio.volume = 0.65 * (sfxVolumeRef.current / 100);
       audio.play().catch(() => {});
     } catch {}
   };
@@ -575,7 +620,7 @@ const toggleFullscreen = async () => {
       window.removeEventListener("keydown", handleUnlock);
       window.removeEventListener("touchstart", handleUnlock);
     };
-  }, [menuStep, settingsOpen, gameConfig.stage]);
+  }, [menuStep, settingsOpen, gameConfig.stage, musicReady]);
 
   useEffect(() => {
     const nextMusic = menuStep === "playing" && !settingsOpen ? (gameConfig.stage || "default") : "menu";
@@ -584,7 +629,7 @@ const toggleFullscreen = async () => {
     return () => {
       if (currentMusicRef.current && currentMusicRef.current !== nextMusic) stopMusic();
     };
-  }, [menuStep, settingsOpen, gameConfig.stage]);
+  }, [menuStep, settingsOpen, gameConfig.stage, musicReady]);
 
   useEffect(() => () => stopMusic(), []);
 
@@ -3897,7 +3942,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
             <div>
               <div className="text-2xl font-light text-gray-900">Settings</div>
               <div className="text-sm text-gray-500 font-light mt-1">
-                Keybinds (P1 + P2)
+                Audio + keybinds
               </div>
             </div>
 
@@ -3923,6 +3968,64 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
             </div>
           )}
 
+          <div className="mt-6 rounded-3xl border border-gray-200 bg-gray-50 p-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="text-sm font-light text-gray-700">Music</div>
+                <div className="text-xs text-gray-500 font-light mt-1">Music volume</div>
+              </div>
+              <div className="text-sm font-medium text-gray-800 w-10 text-right">{musicVolume}</div>
+            </div>
+
+            <div className="px-[10px]">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="10"
+                value={musicVolume}
+                onInput={(e) => {
+                  const next = Math.max(0, Math.min(100, Math.round(Number(e.target.value) / 10) * 10));
+                  setMusicVolume(next);
+                }}
+                onChange={(e) => {
+                  const next = Math.max(0, Math.min(100, Math.round(Number(e.target.value) / 10) * 10));
+                  setMusicVolume(next);
+                }}
+                className="audio-step-slider mt-4 w-full cursor-pointer"
+                style={{ "--fill": `${musicVolume}%` }}
+              />
+            </div>
+
+            <div className="mt-6 flex items-center justify-between gap-4">
+              <div>
+                <div className="text-sm font-light text-gray-700">SFX</div>
+                <div className="text-xs text-gray-500 font-light mt-1">Sound effects volume</div>
+              </div>
+              <div className="text-sm font-medium text-gray-800 w-10 text-right">{sfxVolume}</div>
+            </div>
+
+            <div className="px-[10px]">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="10"
+                value={sfxVolume}
+                onInput={(e) => {
+                  const next = Math.max(0, Math.min(100, Math.round(Number(e.target.value) / 10) * 10));
+                  setSfxVolume(next);
+                }}
+                onChange={(e) => {
+                  const next = Math.max(0, Math.min(100, Math.round(Number(e.target.value) / 10) * 10));
+                  setSfxVolume(next);
+                }}
+                className="audio-step-slider mt-4 w-full cursor-pointer"
+                style={{ "--fill": `${sfxVolume}%` }}
+              />
+            </div>
+          </div>
+
           <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-3">
               <div className="text-sm font-light text-gray-700">Player 1</div>
@@ -3945,6 +4048,8 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 keysPressed.current = {};
                 setP1Binds(DEFAULT_P1);
                 setP2Binds(DEFAULT_P2);
+                setMusicVolume(50);
+                setSfxVolume(50);
               }}
             >
               Reset Defaults
