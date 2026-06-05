@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+export const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 export function verifyToken(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
@@ -21,4 +21,9 @@ export function verifyToken(req, res, next) {
 
 export function signToken(userId, username) {
   return jwt.sign({ id: userId, username }, JWT_SECRET, { expiresIn: '30d' });
+}
+
+export function verifySocketToken(token) {
+  if (!token) throw new Error('No token');
+  return jwt.verify(token, JWT_SECRET);
 }

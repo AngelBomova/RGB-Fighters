@@ -1,32 +1,43 @@
 import express from 'express';
 import bcryptjs from 'bcryptjs';
 import pool from '../db.js';
-import { signToken } from '../middleware/auth.js';
+import { signToken, verifyToken } from '../middleware/auth.js';
+import { isAllowedUsername, normalizeUsername, MAX_USERNAME_LENGTH } from '../usernameRules.js';
 
 const router = express.Router();
 
 router.post('/register', async (req, res) => {
   try {
-    const { email, username, password } = req.body;
+    const { username, password } = req.body;
+    const cleanUsername = normalizeUsername(username);
 
-    if (!email || !username || !password) {
+    if (!cleanUsername || !password) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    if (cleanUsername.length > MAX_USERNAME_LENGTH) {
+      return res.status(400).json({ error: `Username must be ${MAX_USERNAME_LENGTH} characters or fewer` });
+    }
+
+    if (!isAllowedUsername(cleanUsername)) {
+      return res.status(400).json({ error: 'Username contains blocked words' });
+    }
+
     const existingUser = await pool.query(
-      'SELECT id FROM users WHERE email = $1 OR username = $2',
-      [email, username]
+      'SELECT id FROM users WHERE username = $1',
+      [cleanUsername]
     );
 
     if (existingUser.rows.length > 0) {
-      return res.status(400).json({ error: 'Email or username already exists' });
+      return res.status(400).json({ error: 'Username already exists' });
     }
 
     const hash = await bcryptjs.hash(password, 10);
 
+    const emailPlaceholder = `${cleanUsername}@local`;
     const result = await pool.query(
       'INSERT INTO users (email, username, password_hash) VALUES ($1, $2, $3) RETURNING id, username, elo, wins, losses',
-      [email, username, hash]
+      [emailPlaceholder, cleanUsername, hash]
     );
 
     const user = result.rows[0];
@@ -50,15 +61,16 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { username, password } = req.body;
+    const cleanUsername = normalizeUsername(username);
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Missing email or password' });
+    if (!cleanUsername || !password) {
+      return res.status(400).json({ error: 'Missing username or password' });
     }
 
     const result = await pool.query(
-      'SELECT id, username, password_hash, elo, wins, losses FROM users WHERE email = $1',
-      [email]
+      'SELECT id, username, password_hash, elo, wins, losses FROM users WHERE username = $1',
+      [cleanUsername]
     );
 
     if (result.rows.length === 0) {
@@ -90,13 +102,8 @@ router.post('/login', async (req, res) => {
   }
 });
 
-router.get('/me', async (req, res) => {
+router.get('/me', verifyToken, async (req, res) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ error: 'No token' });
-    }
-
     const result = await pool.query(
       'SELECT id, username, elo, wins, losses FROM users WHERE id = $1',
       [req.userId]

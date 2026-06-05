@@ -5,6 +5,10 @@ import background4Url from "./assets/Background4.png";
 import background5Url from "./assets/Background5.png";
 import homepageUrl from "./assets/homepage.png";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import api from "./api";
+import Login from "./online/Login";
+import Leaderboard from "./online/Leaderboard";
+import { createSocket } from "./socket";
 
 const rgbSoundModules = import.meta.glob("./assets/RGBsounds/*", { eager: true, import: "default" });
 const RGB_SOUND_URLS = Object.fromEntries(
@@ -21,6 +25,73 @@ function FighterGame() {
   const [mode, setMode] = useState("home");
 
   const [menuStep, setMenuStep] = useState("idle");
+
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(() => {
+    try {
+      return localStorage.getItem('rgb_token');
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (!token) return;
+    let mounted = true;
+    api.me(token).then((u) => {
+      if (!mounted) return;
+      setUser(u);
+    }).catch(() => {
+      localStorage.removeItem('rgb_token');
+      setToken(null);
+      setUser(null);
+    });
+    return () => (mounted = false);
+  }, [token]);
+
+  const socketRef = useRef(null);
+  const [opponentDisconnected, setOpponentDisconnected] = useState(false);
+  const [forfeitRemaining, setForfeitRemaining] = useState(0);
+  const forfeitIntervalRef = useRef(null);
+  const [queueing, setQueueing] = useState(false);
+  const [matched, setMatched] = useState(null); // { matchId, opponent, side }
+  const [charSelect, setCharSelect] = useState(null); // { timeLeft, matchId }
+  const [onlineError, setOnlineError] = useState("");
+  const onlineMatchRef = useRef(null); // { matchId, side }
+  const onlineRemoteInputsRef = useRef({});
+
+  useEffect(() => {
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+      if (forfeitIntervalRef.current) {
+        clearInterval(forfeitIntervalRef.current);
+        forfeitIntervalRef.current = null;
+      }
+      setOpponentDisconnected(false);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!charSelect) return;
+    const start = Date.now();
+    let remaining = charSelect.timeLeft || 20000;
+    const iv = setInterval(() => {
+      remaining -= 250;
+      setCharSelect((s) => (s ? { ...s, timeLeft: Math.max(0, remaining) } : null));
+      if (remaining <= 0) clearInterval(iv);
+    }, 250);
+    return () => clearInterval(iv);
+  }, [charSelect]);
+
+  useEffect(() => {
+    if (!charSelect || charSelect.timeLeft > 0) return;
+    clearOnlineSession({ disconnectSocket: false, keepLobby: false });
+    setMode("home");
+    setMenuStep("idle");
+  }, [charSelect?.timeLeft]);
 
   const [p1Color, setP1Color] = useState(null);
   const [p2Color, setP2Color] = useState(null);
@@ -58,6 +129,12 @@ const toggleFullscreen = async () => {
 
   const keysPressed = useRef({});
   const projectiles = useRef([]);
+  const fightersRef = useRef([]);
+  const onlineLastSyncSeqRef = useRef(0);
+  const onlineSyncSeqRef = useRef(0);
+  const onlineSyncMatchIdRef = useRef(null);
+  const onlineLastStatePostAtRef = useRef(0);
+  const onlineIsHostRef = useRef(false);
   const pausedRef = useRef(false);
 
   const practiceRefreshRef = useRef(null);
@@ -65,6 +142,7 @@ const toggleFullscreen = async () => {
   const currentMusicRef = useRef("");
   const audioUnlockedRef = useRef(false);
   const [musicReady, setMusicReady] = useState(false);
+  const apiBaseUrl = String(import.meta.env.VITE_API_URL || import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_BASE || "http://localhost:3001").replace(/\/api\/?$/, "").replace(/\/$/, "");
   const [musicVolume, setMusicVolume] = useState(() => {
     try {
       const raw = localStorage.getItem("rgb_fighters_music_volume_v1") ?? localStorage.getItem("rgb_fighters_master_volume_v1");
@@ -119,6 +197,8 @@ const toggleFullscreen = async () => {
   const roundPhaseRef = useRef("countdown");
   const countdownRef = useRef(3);
   const roundMsRemainingRef = useRef(null);
+  const countdownEndsAtRef = useRef(null);
+  const roundEndsAtRef = useRef(null);
   const lastShownSecondRef = useRef(null);
 
   const DEFAULT_P1 = {
@@ -169,6 +249,17 @@ const toggleFullscreen = async () => {
   const [p2Binds, setP2Binds] = useState(() => loadBinds("rgb_fighters_keybinds_p2_v3", DEFAULT_P2));
   const p1BindsRef = useRef(p1Binds);
   const p2BindsRef = useRef(p2Binds);
+  const onlineOpponentBindsRef = useRef({
+    moveLeft: "__remote_moveLeft",
+    moveRight: "__remote_moveRight",
+    jump: "__remote_jump",
+    duck: "__remote_duck",
+    block: "__remote_block",
+    punch: "__remote_punch",
+    kick: "__remote_kick",
+    special1: "__remote_special1",
+    special2: "__remote_special2",
+  });
 
   useEffect(() => {
     p1BindsRef.current = p1Binds;
@@ -272,15 +363,34 @@ const toggleFullscreen = async () => {
   }, [listeningFor]);
 
   useEffect(() => {
-    pausedRef.current = settingsOpen;
+    pausedRef.current = settingsOpen && mode !== "online";
 
-    keysPressed.current = {};
+    if (settingsOpen && mode !== "online") {
+      keysPressed.current = {};
+    }
 
     if (!settingsOpen) {
       listeningForRef.current = null;
       setListeningFor(null);
     }
-  }, [settingsOpen]);
+  }, [settingsOpen, mode]);
+
+  useEffect(() => {
+    const handleBlur = () => {
+      if (mode === "online" && onlineMatchRef.current?.matchId) {
+        keysPressed.current = {};
+        sendOnlineInputs();
+      }
+    };
+
+    window.addEventListener("blur", handleBlur);
+    document.addEventListener("visibilitychange", handleBlur);
+
+    return () => {
+      window.removeEventListener("blur", handleBlur);
+      document.removeEventListener("visibilitychange", handleBlur);
+    };
+  }, [mode]);
 
   const stopMusic = () => {
     const currentName = currentMusicRef.current;
@@ -485,6 +595,8 @@ const toggleFullscreen = async () => {
   const primeNewRound = () => {
     roundMsRemainingRef.current = null;
     lastShownSecondRef.current = null;
+    countdownEndsAtRef.current = Date.now() + 4000;
+    roundEndsAtRef.current = null;
     setRoundTime(null);
 
     setRoundPhase("countdown");
@@ -497,8 +609,45 @@ const toggleFullscreen = async () => {
     roundPhaseRef.current = roundPhase;
   }, [roundPhase]);
   useEffect(() => {
+    if (roundPhase !== "countdown") return;
+    if (countdownEndsAtRef.current) return;
+    countdownEndsAtRef.current = Date.now() + 4000;
+  }, [roundPhase]);
+  useEffect(() => {
     countdownRef.current = countdownValue === "GO" ? 0 : countdownValue;
   }, [countdownValue]);
+
+  useEffect(() => {
+    if (mode === "online" && !onlineIsHostRef.current) return;
+    if (mode !== "online" || menuStep !== "playing" || roundPhase !== "countdown") return;
+
+    const iv = setInterval(() => {
+      const endAt = countdownEndsAtRef.current;
+      if (!endAt) return;
+
+      const remaining = Math.max(0, endAt - Date.now());
+      if (remaining <= 0) {
+        setCountdownValue(3);
+        countdownRef.current = 3;
+        setRoundPhase("fight");
+        roundPhaseRef.current = "fight";
+        roundEndsAtRef.current = Date.now() + ROUND_TIME_SECONDS * 1000;
+        roundMsRemainingRef.current = ROUND_TIME_SECONDS * 1000;
+        lastShownSecondRef.current = ROUND_TIME_SECONDS;
+        setRoundTime(ROUND_TIME_SECONDS);
+        clearInterval(iv);
+        return;
+      }
+
+      const nextValue = remaining <= 1000 ? "GO" : remaining <= 2000 ? 1 : remaining <= 3000 ? 2 : 3;
+      if (nextValue !== countdownValue) {
+        setCountdownValue(nextValue);
+        countdownRef.current = nextValue === "GO" ? 0 : nextValue;
+      }
+    }, 100);
+
+    return () => clearInterval(iv);
+  }, [mode, menuStep, roundPhase, countdownValue]);
 
   const randPick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const randStage = () => randPick(["default", "recursion", "sky", "hourglass", "bottom"]);
@@ -537,6 +686,23 @@ const toggleFullscreen = async () => {
       practiceDummy: false,
       ladder: false,
     };
+
+    // Online match: construct humans from online-selected colors so the playing canvas initializes
+    if (mode === "online") {
+      // if p1/p2 colors are set from char-select or match:start, use them; otherwise pick defaults
+      const c1 = p1Color || "red";
+      const c2 = p2Color || "blue";
+      return {
+        ...base,
+        humans: [
+          { slot: "p1", team: 1, color: c1 },
+          { slot: "p2", team: 2, color: c2 },
+        ],
+        ai: [],
+        difficulty: null,
+        stage: stage || "default",
+      };
+    }
 
     if (mode === "practice") {
       return {
@@ -607,7 +773,7 @@ const toggleFullscreen = async () => {
     }
 
     return { ...base, humans: [], ai: [], difficulty: null, stage: "default" };
-  }, [mode, p1Color, p2Color, opp1Color, opp2Color, difficulty, stage, ladderIndex, ladderOppOrder]);
+  }, [mode, p1Color, p2Color, opp1Color, opp2Color, difficulty, stage, ladderIndex, ladderOppOrder, matched]);
 
   useEffect(() => {
     const handleUnlock = () => unlockAudio();
@@ -646,7 +812,302 @@ const toggleFullscreen = async () => {
     primeNewRound();
   };
 
+  const sendOnlineInputs = () => {
+    const matchId = onlineMatchRef.current?.matchId;
+    const socket = socketRef.current;
+    if (!matchId || !socket) return;
+
+    const binds = p1BindsRef.current || {};
+    const actions = {};
+    for (const action of Object.keys(ACTION_LABELS)) {
+      const key = binds[action];
+      actions[action] = !!keysPressed.current[key];
+    }
+
+    socket.emit('input:send', { matchId, inputs: actions });
+  };
+
+  const sendOnlineStateSnapshot = () => {
+    const matchId = onlineMatchRef.current?.matchId;
+    const socket = socketRef.current;
+    const isHost = onlineMatchRef.current?.host === true || onlineMatchRef.current?.side === "left";
+    if (!matchId || !socket || !isHost) return;
+
+    onlineSyncSeqRef.current += 1;
+    const state = serializeOnlineState();
+    socket.emit('state:sync', { matchId, state });
+
+    const now = Date.now();
+    if (now - onlineLastStatePostAtRef.current >= 80) {
+      onlineLastStatePostAtRef.current = now;
+      fetch(`${apiBaseUrl}/api/match/state/${encodeURIComponent(matchId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state }),
+      }).catch(() => {});
+    }
+  };
+
+  const clearOnlineSession = ({ disconnectSocket = false, keepLobby = true } = {}) => {
+    if (forfeitIntervalRef.current) {
+      clearInterval(forfeitIntervalRef.current);
+      forfeitIntervalRef.current = null;
+    }
+
+    onlineMatchRef.current = null;
+    onlineRemoteInputsRef.current = {};
+      onlineIsHostRef.current = false;
+    onlineSyncSeqRef.current = 0;
+    onlineLastSyncSeqRef.current = 0;
+    onlineSyncMatchIdRef.current = null;
+    onlineLastStatePostAtRef.current = 0;
+    countdownEndsAtRef.current = null;
+    roundEndsAtRef.current = null;
+    setMatched(null);
+    setCharSelect(null);
+    setQueueing(false);
+    setOpponentDisconnected(false);
+    setForfeitRemaining(0);
+
+    if (disconnectSocket && socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+
+    if (keepLobby) {
+      setMode("online");
+      setMenuStep("idle");
+    }
+  };
+
+  const serializeOnlineState = () => {
+    const fighters = fightersRef.current || [];
+    return {
+      matchId: onlineMatchRef.current?.matchId || null,
+      seq: onlineSyncSeqRef.current,
+      roundPhase: roundPhaseRef.current,
+      countdownValue: countdownRef.current === 0 ? "GO" : countdownRef.current,
+      roundTime: lastShownSecondRef.current ?? roundTime,
+      countdownEndsAt: countdownEndsAtRef.current,
+      roundEndsAt: roundEndsAtRef.current,
+      gameOver,
+      team1Rounds,
+      team2Rounds,
+      roundWinnerText,
+      matchWinnerText,
+      fighters: fighters.map((p) => ({
+        id: p.id,
+        name: p.name,
+        label: p.label,
+        team: p.team,
+        type: p.type,
+        x: p.x,
+        y: p.y,
+        vx: p.vx,
+        vy: p.vy,
+        width: p.width,
+        height: p.height,
+        facing: p.facing,
+        color: p.color,
+        lightColor: p.lightColor,
+        alive: p.alive,
+        health: p.health,
+        grounded: p.grounded,
+        attacking: p.attacking,
+        attackTimer: p.attackTimer,
+        attackType: p.attackType,
+        attackHeight: p.attackHeight,
+        blocking: p.blocking,
+        ducking: p.ducking,
+        frozen: p.frozen,
+        frozenTimer: p.frozenTimer,
+        jumpDisabled: p.jumpDisabled,
+        jumpDisabledTimer: p.jumpDisabledTimer,
+        blockDisabled: p.blockDisabled,
+        blockDisabledTimer: p.blockDisabledTimer,
+        specialDisabled: p.specialDisabled,
+        specialDisabledTimer: p.specialDisabledTimer,
+        slowedTimer: p.slowedTimer,
+        poisoned: p.poisoned,
+        poisonTicksLeft: p.poisonTicksLeft,
+        poisonTickTimer: p.poisonTickTimer,
+        healing: p.healing,
+        healTickTimer: p.healTickTimer,
+        canProjectile: p.canProjectile,
+        canSpecial2: p.canSpecial2,
+        dashTimer: p.dashTimer,
+        dashHasHit: p.dashHasHit,
+        charging: p.charging,
+        chargeFrames: p.chargeFrames,
+        purpleCharging: p.purpleCharging,
+        purpleChargeTimer: p.purpleChargeTimer,
+        speedBoostTimer: p.speedBoostTimer,
+        damageAmpTimer: p.damageAmpTimer,
+        spearLocked: p.spearLocked,
+        spearStunned: p.spearStunned,
+        spearStunTimer: p.spearStunTimer,
+        reflecting: p.reflecting,
+        reflectTimer: p.reflectTimer,
+        punchCooldown: p.punchCooldown,
+        kickCooldown: p.kickCooldown,
+        upperCooldown: p.upperCooldown,
+        sweepCooldown: p.sweepCooldown,
+        hitstun: p.hitstun,
+        hitstunTimer: p.hitstunTimer,
+        hitFlashTimer: p.hitFlashTimer,
+        hitFlashColor: p.hitFlashColor,
+        hitbox: p.hitbox,
+        hurtbox: p.hurtbox,
+      })),
+      projectiles: (projectiles.current || []).map((proj) => ({
+        x: proj.x,
+        y: proj.y,
+        vx: proj.vx,
+        vy: proj.vy || 0,
+        team: proj.team,
+        type: proj.type,
+        attackHeight: proj.attackHeight,
+        color: proj.color,
+        radius: proj.radius,
+        knockbackDir: proj.knockbackDir,
+      })),
+    };
+  };
+
+  const applyOnlineState = (snapshot) => {
+    if (!snapshot) return;
+
+    const snapshotMatchId = snapshot.matchId || onlineMatchRef.current?.matchId || null;
+    if (snapshotMatchId && onlineSyncMatchIdRef.current !== snapshotMatchId) {
+      onlineSyncMatchIdRef.current = snapshotMatchId;
+      onlineLastSyncSeqRef.current = 0;
+    }
+
+    const nextSeq = Number.isFinite(snapshot.seq) ? snapshot.seq : onlineLastSyncSeqRef.current + 1;
+    if (nextSeq <= onlineLastSyncSeqRef.current) return;
+    onlineLastSyncSeqRef.current = nextSeq;
+
+    if (typeof snapshot.roundPhase !== "undefined") {
+      roundPhaseRef.current = snapshot.roundPhase;
+      setRoundPhase(snapshot.roundPhase);
+    }
+    if (typeof snapshot.countdownValue !== "undefined") setCountdownValue(snapshot.countdownValue);
+    if (typeof snapshot.roundTime !== "undefined") setRoundTime(snapshot.roundTime);
+    if (typeof snapshot.countdownEndsAt !== "undefined") countdownEndsAtRef.current = snapshot.countdownEndsAt;
+    if (typeof snapshot.roundEndsAt !== "undefined") roundEndsAtRef.current = snapshot.roundEndsAt;
+    if (typeof snapshot.gameOver !== "undefined") setGameOver(snapshot.gameOver);
+    if (typeof snapshot.team1Rounds !== "undefined") setTeam1Rounds(snapshot.team1Rounds);
+    if (typeof snapshot.team2Rounds !== "undefined") setTeam2Rounds(snapshot.team2Rounds);
+    if (typeof snapshot.roundWinnerText !== "undefined") setRoundWinnerText(snapshot.roundWinnerText);
+    if (typeof snapshot.matchWinnerText !== "undefined") setMatchWinnerText(snapshot.matchWinnerText);
+    if (typeof snapshot.roundTime !== "undefined" && snapshot.roundTime != null) {
+      lastShownSecondRef.current = snapshot.roundTime;
+      roundMsRemainingRef.current = snapshot.roundTime * 1000;
+    }
+    if (typeof snapshot.countdownValue !== "undefined") {
+      countdownRef.current = snapshot.countdownValue === "GO" ? 0 : snapshot.countdownValue;
+    }
+
+    const fighters = fightersRef.current || [];
+    for (const data of snapshot.fighters || []) {
+      const fighter = fighters.find((p) => p.id === data.id);
+      if (!fighter) continue;
+      Object.assign(fighter, data);
+      fighter.hitbox = data.hitbox || fighter.hitbox || { x: 0, y: 0, width: 0, height: 0 };
+      fighter.hurtbox = data.hurtbox || fighter.hurtbox || { x: 0, y: 0, width: 40, height: 60 };
+    }
+
+    projectiles.current = (snapshot.projectiles || []).map((proj) => ({
+      ...proj,
+      owner: null,
+    }));
+  };
+
+  useEffect(() => {
+    const match = onlineMatchRef.current;
+    const isViewer = mode === "online" && menuStep === "playing" && match?.matchId && !match.host && match.side !== "left";
+    if (!isViewer) return;
+
+    let cancelled = false;
+
+    const pollOnlineState = async () => {
+      const activeMatch = onlineMatchRef.current;
+      if (!activeMatch?.matchId || activeMatch.host || activeMatch.side === "left") return;
+
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/match/state/${encodeURIComponent(activeMatch.matchId)}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled || !data?.state || data.matchId !== activeMatch.matchId) return;
+        applyOnlineState({ ...data.state, matchId: data.matchId });
+      } catch {}
+    };
+
+    pollOnlineState();
+    const intervalId = window.setInterval(pollOnlineState, 80);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [mode, menuStep, apiBaseUrl]);
+
+  const onlineLocalTeam = mode === "online" && onlineMatchRef.current?.matchId
+    ? onlineMatchRef.current.side === "left"
+      ? 1
+      : 2
+    : null;
+
+  const sendLeaveForfeit = () => {
+    const matchId = onlineMatchRef.current?.matchId;
+    const authToken = token || (typeof localStorage !== "undefined" ? localStorage.getItem("rgb_token") : null);
+    if (!matchId || !authToken) return;
+
+    const payload = JSON.stringify({ token: authToken, matchId });
+    const url = `${apiBaseUrl}/api/match/leave`;
+
+    try {
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(url, new Blob([payload], { type: "application/json" }));
+        return;
+      }
+    } catch {}
+
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+      keepalive: true,
+    }).catch(() => {});
+  };
+
+  useEffect(() => {
+    const handlePageExit = () => {
+      if (!onlineMatchRef.current?.matchId) return;
+      sendLeaveForfeit();
+    };
+
+    window.addEventListener("pagehide", handlePageExit);
+    window.addEventListener("beforeunload", handlePageExit);
+
+    return () => {
+      window.removeEventListener("pagehide", handlePageExit);
+      window.removeEventListener("beforeunload", handlePageExit);
+    };
+  }, [token]);
+
   const goHome = () => {
+    const hasActiveOnlineMatch = !!onlineMatchRef.current?.matchId || !!charSelect || !!matched;
+    if (hasActiveOnlineMatch) {
+      sendLeaveForfeit();
+      clearOnlineSession({ disconnectSocket: true, keepLobby: false });
+    } else if (queueing && socketRef.current) {
+      socketRef.current.emit('queue:cancel');
+      socketRef.current.disconnect();
+      socketRef.current = null;
+      setQueueing(false);
+      setMatched(null);
+    }
+
     playSfx("menu_back");
     setSettingsOpen(false);
     setListeningFor(null);
@@ -1041,7 +1502,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
               id: o.slot,
               team: 2,
               isHuman: isHuman2,
-              bindsRef: isHuman2 ? p2BindsRef : null,
+              bindsRef: isHuman2 && mode === "online" ? onlineOpponentBindsRef : isHuman2 ? p2BindsRef : null,
               data: p2Data,
               x: 700,
               y: groundLevel - 60,
@@ -1075,6 +1536,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
     };
 
     spawn();
+    fightersRef.current = fighters;
 
     const resetPositions = () => {
       if (!is2v2) {
@@ -1169,12 +1631,15 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
     practiceRefreshRef.current = refreshPractice;
 
     const handleKeyDown = (e) => {
-      if (pausedRef.current || listeningForRef.current) return;
+      if ((pausedRef.current && mode !== "online") || listeningForRef.current) return;
 
       const k = normalizeBindKey(e.key);
       if (!k) return;
 
       keysPressed.current[k] = true;
+      if (mode === "online" && onlineMatchRef.current?.matchId && menuStep === "playing") {
+        sendOnlineInputs();
+      }
     };
 
     const handleKeyUp = (e) => {
@@ -1182,6 +1647,9 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
       if (!k) return;
 
       keysPressed.current[k] = false;
+      if (mode === "online" && onlineMatchRef.current?.matchId && menuStep === "playing") {
+        sendOnlineInputs();
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -2698,13 +3166,31 @@ if (hpW > 0) {
 
     const doHumanControls = (p) => {
       if (!p.alive) return;
-      if (pausedRef.current) return;
+      if (pausedRef.current && mode !== "online") return;
       if (roundPhaseRef.current !== "fight") return;
       if (p.dummy) return;
       if (p.frozen || p.hitstun || p.spearStunned) return;
 
       const binds = p.bindsRef?.current;
-      if (!binds) return;
+      const isOnline = mode === "online" && onlineLocalTeam != null;
+      const isOnlineRemote = isOnline && p.team !== onlineLocalTeam;
+      const actionBinds = isOnline
+        ? isOnlineRemote
+          ? (p.bindsRef?.current || onlineOpponentBindsRef.current)
+          : (p1BindsRef.current || binds || {})
+        : (binds || {});
+      if (!actionBinds) return;
+      const getHeld = (action) => {
+        if (isOnlineRemote) return !!onlineRemoteInputsRef.current[action];
+        return !!(actionBinds[action] && keysPressed.current[actionBinds[action]]);
+      };
+      const clearHeld = (action) => {
+        if (isOnlineRemote) {
+          onlineRemoteInputsRef.current[action] = false;
+        } else if (actionBinds[action]) {
+          keysPressed.current[actionBinds[action]] = false;
+        }
+      };
 
       if (p.spearLocked || p.reflecting || p.purpleCharging) {
         p.vx = 0;
@@ -2717,8 +3203,8 @@ if (hpW > 0) {
         return;
       }
 
-      if (p.type === "poison" && binds.special2) {
-        const wantsHeal = !!keysPressed.current[binds.special2] && !p.specialDisabled && !p.frozen && p.health < 100;
+      if (p.type === "poison" && actionBinds.special2) {
+        const wantsHeal = getHeld("special2") && !p.specialDisabled && !p.frozen && p.health < 100;
         if (wantsHeal && !p.healing) playSfx("heal");
         p.healing = wantsHeal;
         if (p.healing && !p.healTickTimer) p.healTickTimer = 120;
@@ -2739,21 +3225,21 @@ if (hpW > 0) {
         p.vx = 0;
         p.ducking = false;
 
-        if (binds.moveLeft && keysPressed.current[binds.moveLeft]) {
+        if (getHeld("moveLeft")) {
           p.vx = -p.speed;
           p.facing = -1;
         }
-        if (binds.moveRight && keysPressed.current[binds.moveRight]) {
+        if (getHeld("moveRight")) {
           p.vx = p.speed;
           p.facing = 1;
         }
 
-        if (binds.jump && !p.jumpDisabled && keysPressed.current[binds.jump] && p.grounded) {
+        if (getHeld("jump") && !p.jumpDisabled && p.grounded) {
           p.vy = p.jumpPower;
           p.grounded = false;
         }
 
-        if (binds.duck && keysPressed.current[binds.duck]) p.ducking = true;
+        if (getHeld("duck")) p.ducking = true;
 
         p.blocking = false;
         p.attacking = false;
@@ -2762,11 +3248,11 @@ if (hpW > 0) {
         p.attackHeight = "";
         p.dashTimer = 0;
       } else {
-        p.blocking = !p.blockDisabled && !!(binds.block && keysPressed.current[binds.block]);
+        p.blocking = !p.blockDisabled && getHeld("block");
 
         if (p.blocking) {
           p.vx = 0;
-          p.ducking = !!(binds.duck && keysPressed.current[binds.duck]);
+          p.ducking = getHeld("duck");
           p.attacking = false;
           p.attackTimer = 0;
           p.attackType = "";
@@ -2777,23 +3263,23 @@ if (hpW > 0) {
         p.vx = 0;
         p.ducking = false;
 
-        if (binds.moveLeft && keysPressed.current[binds.moveLeft]) {
+        if (getHeld("moveLeft")) {
           p.vx = -p.speed;
           p.facing = -1;
         }
-        if (binds.moveRight && keysPressed.current[binds.moveRight]) {
+        if (getHeld("moveRight")) {
           p.vx = p.speed;
           p.facing = 1;
         }
 
-        if (binds.jump && !p.jumpDisabled && keysPressed.current[binds.jump] && p.grounded) {
+        if (getHeld("jump") && !p.jumpDisabled && p.grounded) {
           p.vy = p.jumpPower;
           p.grounded = false;
         }
 
-        if (binds.duck && keysPressed.current[binds.duck]) p.ducking = true;
+        if (getHeld("duck")) p.ducking = true;
 
-        if (binds.punch && keysPressed.current[binds.punch] && !p.attacking) {
+        if (getHeld("punch") && !p.attacking) {
           if (p.ducking && p.upperCooldown === 0) {
             p.attacking = true;
             p.attackType = "uppercut";
@@ -2801,7 +3287,7 @@ if (hpW > 0) {
             p.attackTimer = 15;
             p.upperCooldown = 60;
             playSfx("uppercut");
-            keysPressed.current[binds.punch] = false;
+            clearHeld("punch");
           } else if (!p.ducking && p.punchCooldown === 0) {
             p.attacking = true;
             p.attackType = "punch";
@@ -2809,11 +3295,11 @@ if (hpW > 0) {
             p.attackTimer = 15;
             p.punchCooldown = 20;
             playSfx("punch");
-            keysPressed.current[binds.punch] = false;
+            clearHeld("punch");
           }
         }
 
-        if (binds.kick && keysPressed.current[binds.kick] && !p.attacking) {
+        if (getHeld("kick") && !p.attacking) {
           if (p.ducking && p.sweepCooldown === 0) {
             p.attacking = true;
             p.attackType = "sweep";
@@ -2821,7 +3307,7 @@ if (hpW > 0) {
             p.attackTimer = 15;
             p.sweepCooldown = 50;
             playSfx("sweep");
-            keysPressed.current[binds.kick] = false;
+            clearHeld("kick");
           } else if (!p.ducking && p.kickCooldown === 0) {
             p.attacking = true;
             p.attackType = "kick";
@@ -2829,7 +3315,7 @@ if (hpW > 0) {
             p.attackTimer = 15;
             p.kickCooldown = 40;
             playSfx("kick");
-            keysPressed.current[binds.kick] = false;
+            clearHeld("kick");
           }
         }
 
@@ -2838,7 +3324,7 @@ if (hpW > 0) {
           p.dashTimer--;
         }
 
-        if (binds.special1 && keysPressed.current[binds.special1] && p.canProjectile && !p.specialDisabled) {
+        if (getHeld("special1") && p.canProjectile && !p.specialDisabled) {
           const projX = p.x + (p.facing > 0 ? p.width : 0);
           const projY = p.y + 25;
           let cooldown = 2500;
@@ -2882,10 +3368,10 @@ if (hpW > 0) {
 
           p.canProjectile = false;
           setManagedTimeout(() => (p.canProjectile = true), cooldown);
-          keysPressed.current[binds.special1] = false;
+          clearHeld("special1");
         }
 
-        if (binds.special2 && keysPressed.current[binds.special2] && !p.specialDisabled) {
+        if (getHeld("special2") && !p.specialDisabled) {
           if (p.canSpecial2) {
             if (p.type === "fire") {
               p.attacking = true;
@@ -2897,13 +3383,13 @@ if (hpW > 0) {
               playSfx("dash");
               p.canSpecial2 = false;
               setManagedTimeout(() => (p.canSpecial2 = true), 2000);
-              keysPressed.current[binds.special2] = false;
+              clearHeld("special2");
             } else if (p.type === "ice") {
               projectiles.current.push({ x: p.x + (p.facing > 0 ? p.width : 0), y: p.y + 25, vx: p.facing * 2.2, owner: p, team: p.team, type: "sloworb", attackHeight: "mid", color: "#93c5fd", radius: 12 });
               playSfx("sloworb");
               p.canSpecial2 = false;
               setManagedTimeout(() => (p.canSpecial2 = true), 10000);
-              keysPressed.current[binds.special2] = false;
+              clearHeld("special2");
             } else if (p.type === "psychic") {
               p.vx = 0;
               p.blocking = false;
@@ -2916,7 +3402,7 @@ if (hpW > 0) {
               p.purpleChargeTimer = 0;
               p.canSpecial2 = false;
               setManagedTimeout(() => (p.canSpecial2 = true), 13000);
-              keysPressed.current[binds.special2] = false;
+              clearHeld("special2");
             } else if (p.type === "electric") {
               p.vx = 0;
               p.blocking = false;
@@ -2926,13 +3412,13 @@ if (hpW > 0) {
               playSfx("reflect");
               p.canSpecial2 = false;
               setManagedTimeout(() => (p.canSpecial2 = true), 3000);
-              keysPressed.current[binds.special2] = false;
+              clearHeld("special2");
             } else if (p.type === "explosion") {
               projectiles.current.push({ x: p.x + (p.facing > 0 ? p.width : 0), y: p.y + 25, vx: p.facing * 2.2, owner: p, team: p.team, type: "orangeorb", attackHeight: "mid", color: "#fb923c", radius: 12 });
               playSfx("orange_orb");
               p.canSpecial2 = false;
               setManagedTimeout(() => (p.canSpecial2 = true), 10000);
-              keysPressed.current[binds.special2] = false;
+              clearHeld("special2");
             } else if (p.type === "light") {
               const target = getNearestEnemy(p);
               if (target) {
@@ -2942,7 +3428,7 @@ if (hpW > 0) {
                 playSfx("white_drop");
                 p.canSpecial2 = false;
                 setManagedTimeout(() => (p.canSpecial2 = true), 4500);
-                keysPressed.current[binds.special2] = false;
+                clearHeld("special2");
               }
             } else if (p.type === "void") {
               if (!p.charging) {
@@ -2954,7 +3440,7 @@ if (hpW > 0) {
           }
         }
 
-        if (p.type === "void" && p.charging && binds.special2 && !keysPressed.current[binds.special2]) {
+        if (p.type === "void" && p.charging && !getHeld("special2")) {
           const chargeDamage = 1 + Math.floor(p.chargeFrames / 20);
           projectiles.current.push({
             x: p.x + (p.facing > 0 ? p.width : 0),
@@ -2978,7 +3464,7 @@ if (hpW > 0) {
         return;
       }
 
-      if (p.type === "void" && p.charging && binds.special2 && !keysPressed.current[binds.special2]) {
+      if (p.type === "void" && p.charging && !getHeld("special2")) {
         const chargeDamage = 1 + Math.floor(p.chargeFrames / 20);
         projectiles.current.push({
           x: p.x + (p.facing > 0 ? p.width : 0),
@@ -3520,7 +4006,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
         lastTime = time;
       }
 
-      const paused = pausedRef.current;
+      const paused = pausedRef.current && mode !== "online";
       const delta = time - lastTime;
 
       if (delta < 16) {
@@ -3564,44 +4050,48 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
       drawStageBackground();
       drawPlatforms();
 
-      if (!paused && !gameOver && roundPhaseRef.current === "countdown") {
-        countdownMsAcc += delta;
+      const isOnlineMatch = mode === "online" && !!onlineMatchRef.current?.matchId;
+      const isOnlineHost = isOnlineMatch && (onlineMatchRef.current?.host === true || onlineMatchRef.current?.side === "left");
+      const shouldSimulate = !isOnlineMatch || isOnlineHost;
 
-        while (countdownMsAcc >= 1000) {
-          countdownMsAcc -= 1000;
-          const next = countdownRef.current - 1;
+      if (shouldSimulate && !paused && !gameOver && roundPhaseRef.current === "countdown") {
+        if (!countdownEndsAtRef.current) countdownEndsAtRef.current = Date.now() + 4000;
+        const countdownRemaining = Math.max(0, countdownEndsAtRef.current - Date.now());
 
-          if (next >= 1) {
-            setCountdownValue(next);
-            countdownRef.current = next;
-          } else if (next === 0) {
-            setCountdownValue("GO");
-            countdownRef.current = 0;
-          } else {
-            setRoundPhase("fight");
-            roundPhaseRef.current = "fight";
-            setCountdownValue(3);
-            countdownRef.current = 3;
-            countdownMsAcc = 0;
-
-            roundMsRemainingRef.current = ROUND_TIME_SECONDS * 1000;
-            lastShownSecondRef.current = ROUND_TIME_SECONDS;
-            setRoundTime(ROUND_TIME_SECONDS);
-          }
+        if (countdownRemaining <= 0) {
+          setRoundPhase("fight");
+          roundPhaseRef.current = "fight";
+          setCountdownValue(3);
+          countdownRef.current = 3;
+          roundMsRemainingRef.current = ROUND_TIME_SECONDS * 1000;
+          roundEndsAtRef.current = Date.now() + ROUND_TIME_SECONDS * 1000;
+          lastShownSecondRef.current = ROUND_TIME_SECONDS;
+          setRoundTime(ROUND_TIME_SECONDS);
+        } else if (countdownRemaining <= 1000) {
+          setCountdownValue("GO");
+          countdownRef.current = 0;
+        } else if (countdownRemaining <= 2000) {
+          setCountdownValue(1);
+          countdownRef.current = 1;
+        } else if (countdownRemaining <= 3000) {
+          setCountdownValue(2);
+          countdownRef.current = 2;
+        } else {
+          setCountdownValue(3);
+          countdownRef.current = 3;
         }
       }
 
       let secondsLeft = lastShownSecondRef.current ?? ROUND_TIME_SECONDS;
-      if (!paused && !gameOver && roundPhaseRef.current === "fight") {
-        if (roundMsRemainingRef.current == null) {
+      if (shouldSimulate && !paused && !gameOver && roundPhaseRef.current === "fight") {
+        if (!roundEndsAtRef.current) {
+          roundEndsAtRef.current = Date.now() + ROUND_TIME_SECONDS * 1000;
           roundMsRemainingRef.current = ROUND_TIME_SECONDS * 1000;
           lastShownSecondRef.current = ROUND_TIME_SECONDS;
           setRoundTime(ROUND_TIME_SECONDS);
         }
 
-        roundMsRemainingRef.current -= delta;
-        if (roundMsRemainingRef.current < 0) roundMsRemainingRef.current = 0;
-
+        roundMsRemainingRef.current = Math.max(0, roundEndsAtRef.current - Date.now());
         secondsLeft = Math.ceil(roundMsRemainingRef.current / 1000);
         if (secondsLeft !== lastShownSecondRef.current) {
           lastShownSecondRef.current = secondsLeft;
@@ -3613,7 +4103,11 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
         }
       }
 
-      const canAct = !paused && !gameOver && roundPhaseRef.current === "fight";
+      const canAct = shouldSimulate && !paused && !gameOver && roundPhaseRef.current === "fight";
+
+      if (isOnlineMatch && roundPhaseRef.current === "fight") {
+        sendOnlineInputs();
+      }
 
       if (canAct) {
         for (const p of fighters) {
@@ -3758,6 +4252,10 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
         checkRoundEndByHP();
       }
 
+      if (shouldSimulate && isOnlineMatch && isOnlineHost) {
+        sendOnlineStateSnapshot();
+      }
+
       projectiles.current.forEach(drawProjectile);
       fighters.forEach(drawFighter);
 
@@ -3813,6 +4311,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
   useEffect(() => {
   if (menuStep !== "playing") return;
+  if (mode === "online" && !onlineIsHostRef.current) return;
   if (!gameOver) return;
   if (matchWinnerText) return;
 
@@ -3837,6 +4336,49 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 }, [gameOver, matchWinnerText, menuStep]);
 
   if (!tailwindLoaded) return <div style={{ padding: 20, textAlign: "center" }}>Loading…</div>;
+
+  const CharSelectModal = () => {
+    if (!charSelect) return null;
+    const matchId = charSelect.matchId || (matched && matched.matchId) || (onlineMatchRef.current && onlineMatchRef.current.matchId);
+    return (
+      <div className="fixed inset-0 bg-black/10 backdrop-blur-[2px] z-50 flex items-center justify-center">
+        <div className="bg-white/95 rounded-2xl p-6 max-w-4xl w-full mx-4 shadow-2xl">
+          <h3 className="text-xl mb-3">Character Select — {Math.ceil((charSelect.timeLeft || 20000) / 1000)}s</h3>
+          <div className="grid grid-cols-4 gap-3">
+            {FIGHTER_COLORS.map((c) => (
+              <ColorCard
+                key={c}
+                color={c}
+                selected={charSelect.me === c}
+                onClick={() => {
+                  if (!socketRef.current) return;
+                  // set local selection and notify server
+                  setCharSelect((prev) => prev ? { ...prev, me: c } : prev);
+                  try {
+                    const side = matched?.side || (onlineMatchRef.current && onlineMatchRef.current.side) || 'left';
+                    if (side === 'left') setP1Color(c); else setP2Color(c);
+                  } catch (e) {}
+                  socketRef.current.emit('char:selected', { matchId, character: c });
+                }}
+              />
+            ))}
+          </div>
+          <div className="mt-4 text-sm text-gray-600">Opponent: {matched?.opponent?.username} {charSelect.opponent ? `(selected: ${charSelect.opponent})` : ''}</div>
+        </div>
+      </div>
+    );
+  };
+
+  const OpponentDisconnectedBanner = () => {
+    if (!opponentDisconnected) return null;
+    return (
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-yellow-100 border border-yellow-300 text-yellow-900 rounded-xl px-4 py-3">
+        <div className="flex items-center gap-4">
+          <div>Opponent disconnected. Auto-forfeit in {Math.ceil(forfeitRemaining/1000)}s</div>
+        </div>
+      </div>
+    );
+  };
 
   const GlobalSettingsButton = () => (
     <button
@@ -4103,6 +4645,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
       }}
     >
       <GlobalSettingsButton />
+      <OpponentDisconnectedBanner />
       <SettingsModal />
       {children}
     </div>
@@ -4192,16 +4735,15 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
               { key: "coop", title: "Multi Player", desc: "2v2: P1+P2 vs AI team (pick both enemies)" },
               { key: "ladder", title: "Ladder", desc: "Face all the colors, and the last fight is a mirror match." },
               { key: "offline", title: "1v1 Offline", desc: "Local PvP (P1 vs P2)" },
-              { key: "online", title: "1v1 Online (Coming Soon)", desc: "Not playable yet" },
+              { key: "online", title: "1v1 Online", desc: "Play against real players online" },
             ].map((m) => {
-              const disabled = m.key === "online";
+              const disabled = false;
               return (
                 <button
                   key={m.key}
-                  disabled={disabled}
-                  onClick={() => (disabled ? startModeFlow("online") : startModeFlow(m.key))}
+                  onClick={() => startModeFlow(m.key)}
                   className={`text-left rounded-3xl p-8 border transition ${
-                    disabled ? "bg-gray-50 border-gray-100 opacity-60 cursor-not-allowed" : "bg-white border-gray-100 hover:scale-[0.99] active:scale-95"
+                    "bg-white border-gray-100 hover:scale-[0.99] active:scale-95"
                   }`}
                   style={{ boxShadow: disabled ? "none" : "0 10px 30px rgba(0,0,0,0.06)" }}
                 >
@@ -4218,15 +4760,217 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
     );
   }
 
-  if (menuStep === "comingsoon" || mode === "online") {
+  if (mode === "online" && menuStep !== "playing") {
     return (
       <Layout>
-        <div className="bg-white rounded-3xl p-16 text-center max-w-3xl border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
+        <CharSelectModal />
+        <div className="bg-white rounded-3xl p-8 text-center max-w-4xl border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
           <h1 className="text-5xl font-light text-gray-900 mb-4">Online 1v1</h1>
-          <p className="text-lg font-light text-gray-500 mb-10">Coming Soon — this mode is not playable yet.</p>
-          <button onClick={goHome} className="bg-gray-900 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition">
-            Return Home
-          </button>
+
+          {!user ? (
+            <div className="space-y-6">
+              <p className="text-lg font-light text-gray-500">You must be logged in to play online.</p>
+              <Login onLogin={(u, t) => { setUser(u); setToken(t); }} />
+              <div className="pt-4">
+                <button onClick={goHome} className="bg-gray-200 text-gray-900 rounded-2xl px-6 py-3 hover:opacity-90 transition">Return Home</button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <p className="text-lg font-light text-gray-500">Logged in as <strong>{user.username}</strong> — ELO: {user.elo} — Record: {user.wins}W - {user.losses}L</p>
+              <div className="flex flex-col items-center gap-4">
+                {matched && (
+                  <div className="p-4 border rounded-md w-full max-w-md">
+                    <div className="text-sm text-gray-600 mb-2">Match Found</div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">You ({user.username})</div>
+                        <div className="text-xs">ELO: {user.elo} — {user.wins}W - {user.losses}L</div>
+                        <div className="text-xs">Side: {matched.side === 'left' ? 'Left' : 'Right'}</div>
+                      </div>
+                      <div>
+                        <div className="font-medium">Opponent: {matched.opponent?.username}</div>
+                        <div className="text-xs">ELO: {matched.opponent?.elo} — {matched.opponent?.wins}W</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {!(queueing || charSelect || matched || onlineMatchRef.current?.matchId) ? (
+                <button
+                  onClick={() => {
+                    setOnlineError("");
+                    if (socketRef.current) socketRef.current.disconnect();
+                    const sockToken = token || (typeof localStorage !== 'undefined' ? localStorage.getItem('rgb_token') : null);
+                    const s = createSocket(sockToken);
+                    try {
+                      s.on('connect_error', (err) => {
+                        console.error('[SOCKET] connect_error', err);
+                        setQueueing(false);
+                        setOnlineError("Could not connect to matchmaking. Restart npm run dev and try again.");
+                      });
+                    } catch (e) {}
+                    socketRef.current = s;
+                    setQueueing(true);
+
+                    s.on('connect', () => {
+                      setOnlineError("");
+                      s.emit('queue:join', { side: 'left' });
+                    });
+
+                    s.on('queue:matched', (d) => {
+                      setMatched(d);
+                      setQueueing(false);
+                      setOnlineError("");
+                    });
+
+                    s.on('char:selectStart', (d) => {
+                      if (d?.matchId) {
+                        setMatched((prev) => {
+                          if (prev && prev.matchId === d.matchId) return prev;
+                          return { ...(prev || {}), matchId: d.matchId, side: d.side || prev?.side };
+                        });
+                      }
+                      setCharSelect({ timeLeft: d.timeLimit || 20000, matchId: d.matchId || (matched && matched.matchId) || (d && d.matchId), me: null, opponent: null });
+                    });
+
+                    s.on('opponent:charSelected', (payload) => {
+                      const c = payload?.character;
+                      setCharSelect((prev) => {
+                        if (!prev) return prev;
+                        return { ...prev, opponent: c || prev.opponent };
+                      });
+
+                      const side = payload?.side || matched?.side || (onlineMatchRef.current && onlineMatchRef.current.side) || 'right';
+                      if (side === 'left') {
+                        setP2Color((prev) => c || prev);
+                      } else {
+                        setP1Color((prev) => c || prev);
+                      }
+                    });
+
+    s.on('char:forfeit', () => {
+      clearOnlineSession({ disconnectSocket: false, keepLobby: false });
+      setMode("home");
+      setMenuStep("idle");
+      resetAll();
+    });
+
+                      s.on('opponent:disconnected', (d) => {
+                        const grace = (d && d.grace) || 10000;
+                        setOpponentDisconnected(true);
+                        setForfeitRemaining(grace);
+                        if (forfeitIntervalRef.current) clearInterval(forfeitIntervalRef.current);
+                        forfeitIntervalRef.current = setInterval(() => {
+                          setForfeitRemaining((prev) => {
+                            const next = Math.max(0, prev - 250);
+                            if (next <= 0) {
+                              clearInterval(forfeitIntervalRef.current);
+                              forfeitIntervalRef.current = null;
+                              if (socketRef.current) { socketRef.current.disconnect(); socketRef.current = null; }
+                              onlineMatchRef.current = null;
+                              onlineRemoteInputsRef.current = {};
+                              setMatched(null);
+                              setQueueing(false);
+                              setMenuStep('idle');
+                            }
+                            return next;
+                          });
+                        }, 250);
+                      });
+                    
+    s.on('opponent:reconnected', () => {
+      if (forfeitIntervalRef.current) {
+        clearInterval(forfeitIntervalRef.current);
+        forfeitIntervalRef.current = null;
+      }
+      setOpponentDisconnected(false);
+      setForfeitRemaining(0);
+    });
+
+                    s.on('match:start', (d) => {
+                      resetAll();
+                      if (d?.matchId) {
+                        setMatched((prev) => (prev && prev.matchId === d.matchId ? prev : { ...(prev || {}), matchId: d.matchId, side: d.side }));
+                      }
+                      const isHost = d.host === true || d.side === 'left';
+                      onlineMatchRef.current = { matchId: d.matchId || (matched && matched.matchId), side: d.side, host: isHost };
+                      onlineIsHostRef.current = isHost;
+                      onlineSyncSeqRef.current = 0;
+                      onlineLastSyncSeqRef.current = 0;
+                      onlineSyncMatchIdRef.current = d.matchId || (matched && matched.matchId) || null;
+                      onlineLastStatePostAtRef.current = 0;
+                      setP1Color(d.p1Char || p1Color);
+                      setP2Color(d.p2Char || p2Color);
+                      setStage(d.stage || "default");
+                      setCharSelect(null);
+                      setMode('online');
+                      onlineRemoteInputsRef.current = {};
+                      setMenuStep('playing');
+                      setTimeout(() => {
+                        const fullscreenTarget = document.documentElement;
+                        if (fullscreenTarget && !document.fullscreenElement && fullscreenTarget.requestFullscreen) {
+                          fullscreenTarget.requestFullscreen().catch(() => {});
+                        }
+                      }, 0);
+
+                      s.on('input:opponent', (payload) => {
+                        const m = onlineMatchRef.current;
+                        if (!m) return;
+                        const inputs = payload?.inputs ?? payload;
+                        window.__lastRemoteInputs = inputs;
+                        onlineRemoteInputsRef.current = { ...(inputs || {}) };
+                      });
+
+                      s.on('state:sync', (payload) => {
+                        const m = onlineMatchRef.current;
+                        if (!m || m.host || m.side === "left") return;
+                        if (payload?.matchId && payload.matchId !== m.matchId) return;
+                        const incomingState = payload?.state || payload;
+                        applyOnlineState({ ...incomingState, matchId: payload?.matchId || incomingState?.matchId || m.matchId });
+                      });
+                    });
+
+    s.on('match:result', (d) => {
+      clearOnlineSession({ disconnectSocket: true, keepLobby: false });
+      setMode("home");
+      setMenuStep("idle");
+      resetAll();
+    });
+
+    s.on('match:ended', () => {
+      clearOnlineSession({ disconnectSocket: true, keepLobby: false });
+      setMode("home");
+      setMenuStep("idle");
+      resetAll();
+    });
+
+                  }}
+                  className="bg-green-600 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition"
+                >
+                  Search For Opponent
+                </button>
+                ) : (
+                  <button onClick={() => {
+                    if (socketRef.current) {
+                      socketRef.current.emit('queue:cancel');
+                      socketRef.current.disconnect();
+                      socketRef.current = null;
+                    }
+                    setQueueing(false);
+                    setMatched(null);
+                    setOnlineError("");
+                  }} className="bg-yellow-600 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition">Cancel Search</button>
+                )}
+                {onlineError && <div className="text-red-500 text-sm max-w-md">{onlineError}</div>}
+                <button onClick={() => { goHome(); localStorage.removeItem('rgb_token'); setToken(null); setUser(null); }} className="bg-red-600 text-white rounded-2xl px-6 py-3">Logout</button>
+                <button onClick={() => setMenuStep('leaderboard')} className="bg-gray-900 text-white rounded-2xl px-6 py-3">Leaderboard</button>
+                <button onClick={goHome} className="bg-gray-200 text-gray-900 rounded-2xl px-6 py-3">Return Home</button>
+              </div>
+
+              {menuStep === 'leaderboard' && <div className="mt-6"><Leaderboard /></div>}
+            </div>
+          )}
+
         </div>
       </Layout>
     );
