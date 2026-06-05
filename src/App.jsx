@@ -49,6 +49,14 @@ function FighterGame() {
     return () => (mounted = false);
   }, [token]);
 
+  const refreshOnlineUser = () => {
+    const authToken = token || (typeof localStorage !== "undefined" ? localStorage.getItem("rgb_token") : null);
+    if (!authToken) return;
+    api.me(authToken).then((updatedUser) => {
+      setUser(updatedUser);
+    }).catch(() => {});
+  };
+
   const socketRef = useRef(null);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const [forfeitRemaining, setForfeitRemaining] = useState(0);
@@ -57,6 +65,7 @@ function FighterGame() {
   const [matched, setMatched] = useState(null); // { matchId, opponent, side }
   const [charSelect, setCharSelect] = useState(null); // { timeLeft, matchId }
   const [onlineError, setOnlineError] = useState("");
+  const [onlinePlayerNames, setOnlinePlayerNames] = useState({ p1: "", p2: "" });
   const onlineMatchRef = useRef(null); // { matchId, side }
   const onlineRemoteInputsRef = useRef({});
 
@@ -135,6 +144,7 @@ const toggleFullscreen = async () => {
   const onlineSyncMatchIdRef = useRef(null);
   const onlineLastStatePostAtRef = useRef(0);
   const onlineIsHostRef = useRef(false);
+  const onlineMatchEndSentRef = useRef(false);
   const pausedRef = useRef(false);
 
   const practiceRefreshRef = useRef(null);
@@ -695,8 +705,8 @@ const toggleFullscreen = async () => {
       return {
         ...base,
         humans: [
-          { slot: "p1", team: 1, color: c1 },
-          { slot: "p2", team: 2, color: c2 },
+          { slot: "p1", team: 1, color: c1, username: onlinePlayerNames.p1 },
+          { slot: "p2", team: 2, color: c2, username: onlinePlayerNames.p2 },
         ],
         ai: [],
         difficulty: null,
@@ -773,7 +783,7 @@ const toggleFullscreen = async () => {
     }
 
     return { ...base, humans: [], ai: [], difficulty: null, stage: "default" };
-  }, [mode, p1Color, p2Color, opp1Color, opp2Color, difficulty, stage, ladderIndex, ladderOppOrder, matched]);
+  }, [mode, p1Color, p2Color, opp1Color, opp2Color, difficulty, stage, ladderIndex, ladderOppOrder, matched, onlinePlayerNames]);
 
   useEffect(() => {
     const handleUnlock = () => unlockAudio();
@@ -861,8 +871,10 @@ const toggleFullscreen = async () => {
     onlineLastSyncSeqRef.current = 0;
     onlineSyncMatchIdRef.current = null;
     onlineLastStatePostAtRef.current = 0;
+    onlineMatchEndSentRef.current = false;
     countdownEndsAtRef.current = null;
     roundEndsAtRef.current = null;
+    setOnlinePlayerNames({ p1: "", p2: "" });
     setMatched(null);
     setCharSelect(null);
     setQueueing(false);
@@ -899,6 +911,7 @@ const toggleFullscreen = async () => {
         id: p.id,
         name: p.name,
         label: p.label,
+        playerName: p.playerName,
         team: p.team,
         type: p.type,
         x: p.x,
@@ -1389,11 +1402,12 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
           ];
 
     const makeFighter = (opts) => {
-      const { id, team, isHuman, bindsRef, data, x, y, facing, dummy, label } = opts;
+      const { id, team, isHuman, bindsRef, data, x, y, facing, dummy, label, playerName } = opts;
       return {
         id,
         team,
         label,
+        playerName: playerName || "",
         isHuman,
         bindsRef,
         dummy: !!dummy,
@@ -1492,6 +1506,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
             facing: 1,
             dummy: false,
             label: "P1",
+            playerName: h.username,
           })
         );
 
@@ -1509,6 +1524,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
               facing: -1,
               dummy: !!o.dummy,
               label: isHuman2 ? "P2" : gameConfig.practiceDummy ? "Dummy" : "AI",
+              playerName: o.username,
             })
           );
         }
@@ -4262,8 +4278,10 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
       if (!is2v2) {
         const f1 = fighters.find((f) => f.team === 1);
         const f2 = fighters.find((f) => f.team === 2);
-        drawHealthBarSmall(`${f1.name} (You)`, f1.alive ? f1.health : 0, 30, 20, f1.color, team1Rounds, false);
-        drawHealthBarSmall(`${f2.name} (${f2.isHuman ? "P2" : gameConfig.practiceDummy ? "Dummy" : "AI"})`, f2.alive ? f2.health : 0, WORLD_W - 220, 20, f2.color, team2Rounds, true);
+        const f1Tag = mode === "online" ? f1.playerName || "Player 1" : "You";
+        const f2Tag = mode === "online" ? f2.playerName || "Player 2" : f2.isHuman ? "P2" : gameConfig.practiceDummy ? "Dummy" : "AI";
+        drawHealthBarSmall(`${f1.name} (${f1Tag})`, f1.alive ? f1.health : 0, 30, 20, f1.color, team1Rounds, false);
+        drawHealthBarSmall(`${f2.name} (${f2Tag})`, f2.alive ? f2.health : 0, WORLD_W - 220, 20, f2.color, team2Rounds, true);
       } else {
         const p1 = fighters.find((f) => f.id === "p1");
         const p2 = fighters.find((f) => f.id === "p2");
@@ -4334,6 +4352,27 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
   return () => window.clearTimeout(id);
 }, [gameOver, matchWinnerText, menuStep]);
+
+useEffect(() => {
+  const match = onlineMatchRef.current;
+  const socket = socketRef.current;
+  const isOnlineMatch = mode === "online" && menuStep === "playing" && match?.matchId;
+  const isHost = match?.host === true || match?.side === "left";
+  if (!isOnlineMatch || !isHost || !socket || !gameOver || !matchWinnerText) return;
+  if (onlineMatchEndSentRef.current) return;
+
+  const p1Rounds = matchWinnerText === "Team 1" ? Math.max(team1Rounds, 2) : team1Rounds;
+  const p2Rounds = matchWinnerText === "Team 2" ? Math.max(team2Rounds, 2) : team2Rounds;
+  const winnerId = matchWinnerText === "Team 1" ? match.p1UserId : matchWinnerText === "Team 2" ? match.p2UserId : null;
+
+  onlineMatchEndSentRef.current = true;
+  socket.emit("match:end", {
+    matchId: match.matchId,
+    p1Rounds,
+    p2Rounds,
+    winnerId,
+  });
+}, [gameOver, matchWinnerText, team1Rounds, team2Rounds, mode, menuStep]);
 
   if (!tailwindLoaded) return <div style={{ padding: 20, textAlign: "center" }}>Loading…</div>;
 
@@ -4849,7 +4888,8 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                     });
 
     s.on('char:forfeit', () => {
-      clearOnlineSession({ disconnectSocket: false, keepLobby: false });
+      refreshOnlineUser();
+      clearOnlineSession({ disconnectSocket: true, keepLobby: false });
       setMode("home");
       setMenuStep("idle");
       resetAll();
@@ -4893,12 +4933,25 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                         setMatched((prev) => (prev && prev.matchId === d.matchId ? prev : { ...(prev || {}), matchId: d.matchId, side: d.side }));
                       }
                       const isHost = d.host === true || d.side === 'left';
-                      onlineMatchRef.current = { matchId: d.matchId || (matched && matched.matchId), side: d.side, host: isHost };
+                      onlineMatchRef.current = {
+                        matchId: d.matchId || (matched && matched.matchId),
+                        side: d.side,
+                        host: isHost,
+                        p1UserId: d.p1UserId,
+                        p2UserId: d.p2UserId,
+                        p1Username: d.p1Username,
+                        p2Username: d.p2Username,
+                      };
                       onlineIsHostRef.current = isHost;
+                      onlineMatchEndSentRef.current = false;
                       onlineSyncSeqRef.current = 0;
                       onlineLastSyncSeqRef.current = 0;
                       onlineSyncMatchIdRef.current = d.matchId || (matched && matched.matchId) || null;
                       onlineLastStatePostAtRef.current = 0;
+                      setOnlinePlayerNames({
+                        p1: d.p1Username || "Player 1",
+                        p2: d.p2Username || "Player 2",
+                      });
                       setP1Color(d.p1Char || p1Color);
                       setP2Color(d.p2Char || p2Color);
                       setStage(d.stage || "default");
@@ -4931,14 +4984,24 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                     });
 
     s.on('match:result', (d) => {
+      setUser((prev) => prev && d ? {
+        ...prev,
+        elo: typeof d.newElo !== "undefined" ? d.newElo : prev.elo,
+        wins: typeof d.wins !== "undefined" ? d.wins : prev.wins,
+        losses: typeof d.losses !== "undefined" ? d.losses : prev.losses,
+      } : prev);
+      refreshOnlineUser();
       clearOnlineSession({ disconnectSocket: true, keepLobby: false });
+      setSettingsOpen(false);
       setMode("home");
       setMenuStep("idle");
       resetAll();
     });
 
     s.on('match:ended', () => {
+      refreshOnlineUser();
       clearOnlineSession({ disconnectSocket: true, keepLobby: false });
+      setSettingsOpen(false);
       setMode("home");
       setMenuStep("idle");
       resetAll();
@@ -5337,6 +5400,10 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 ) : mode === "ladder" ? (
                   <button onClick={onNextMatchLadder} className="bg-gray-900 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition">
                     {matchWinnerText === "Team 1" ? "Next Ladder Match" : "Ladder Failed"}
+                  </button>
+                ) : mode === "online" ? (
+                  <button onClick={goHome} className="bg-gray-900 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition">
+                    Home
                   </button>
                 ) : (
                   <button onClick={() => startModeFlow(mode)} className="bg-gray-900 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition">
