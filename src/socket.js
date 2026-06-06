@@ -1,5 +1,6 @@
 import { io } from 'socket.io-client';
-const rawSocketUrl = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || 'http://localhost:3001';
+const defaultSocketUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3001';
+const rawSocketUrl = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || defaultSocketUrl;
 const API_URL = String(rawSocketUrl).replace(/\/api\/?$/, '').replace(/\/$/, '');
 
 export function createSocket(token) {

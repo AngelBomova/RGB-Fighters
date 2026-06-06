@@ -152,7 +152,8 @@ const toggleFullscreen = async () => {
   const currentMusicRef = useRef("");
   const audioUnlockedRef = useRef(false);
   const [musicReady, setMusicReady] = useState(false);
-  const apiBaseUrl = String(import.meta.env.VITE_API_URL || import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_BASE || "http://localhost:3001").replace(/\/api\/?$/, "").replace(/\/$/, "");
+  const defaultApiBaseUrl = typeof window !== "undefined" ? window.location.origin : "http://localhost:3001";
+  const apiBaseUrl = String(import.meta.env.VITE_API_URL || import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_BASE || defaultApiBaseUrl).replace(/\/api\/?$/, "").replace(/\/$/, "");
   const [musicVolume, setMusicVolume] = useState(() => {
     try {
       const raw = localStorage.getItem("rgb_fighters_music_volume_v1") ?? localStorage.getItem("rgb_fighters_master_volume_v1");

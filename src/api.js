@@ -1,4 +1,5 @@
-const rawApiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_BASE || 'http://localhost:3001';
+const defaultApiUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3001';
+const rawApiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_BASE || defaultApiUrl;
 const API_URL = String(rawApiUrl).replace(/\/api\/?$/, '').replace(/\/$/, '');
 
 async function request(path, opts = {}) {
@@ -6,7 +7,7 @@ async function request(path, opts = {}) {
   try {
     res = await fetch(API_URL + path, opts);
   } catch {
-    throw { error: 'Could not reach the online server. Make sure npm run server is running.' };
+    throw { error: 'Could not reach the online server.' };
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw data;
