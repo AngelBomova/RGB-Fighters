@@ -1,0 +1,8 @@
+[build]
+
+[deploy]
+startCommand = "node server/index.js"
+
+[variables]
+RAILPACK_NODE_VERSION = "20"
+RAILPACK_NO_SPA = "1"
