@@ -3458,7 +3458,7 @@ if (hpW > 0) {
         }
 
         if (p.type === "void" && p.charging && !getHeld("special2")) {
-          const chargeDamage = 1 + Math.floor(p.chargeFrames / 20);
+          const chargeDamage = 8 + Math.floor(p.chargeFrames / 15);
           projectiles.current.push({
             x: p.x + (p.facing > 0 ? p.width : 0),
             y: p.y + 25,
@@ -3482,7 +3482,7 @@ if (hpW > 0) {
       }
 
       if (p.type === "void" && p.charging && !getHeld("special2")) {
-        const chargeDamage = 1 + Math.floor(p.chargeFrames / 20);
+        const chargeDamage = 8 + Math.floor(p.chargeFrames / 15);
         projectiles.current.push({
           x: p.x + (p.facing > 0 ? p.width : 0),
           y: p.y + 25,
@@ -3929,7 +3929,7 @@ if (p.aiBlockHoldTimer > 0) {
         ctx.fillRect(p.x - chargeSize / 2, drawY - chargeSize / 2, p.width + chargeSize, drawHeight + chargeSize);
         ctx.globalAlpha = 1;
 
-        const dmg = 1 + Math.floor(p.chargeFrames / 20);
+        const dmg = 8 + Math.floor(p.chargeFrames / 15);
         ctx.fillStyle = "#111827";
         ctx.font = "bold 12px Arial";
         const txt = `DMG ${dmg}`;
