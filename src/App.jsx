@@ -2449,11 +2449,19 @@ const smartBlock = (ai, attackHeight = "mid") => {
 };
 
 const moveToward = (ai, target, speedMult = 1) => {
+  if (ai.ducking) {
+    ai.vx = 0;
+    return;
+  }
   const dx = faceTarget(ai, target);
   ai.vx = dx > 0 ? ai.speed * speedMult : -ai.speed * speedMult;
 };
 
 const moveAway = (ai, target, speedMult = 1) => {
+  if (ai.ducking) {
+    ai.vx = 0;
+    return;
+  }
   const dx = faceTarget(ai, target);
   ai.vx = dx > 0 ? -ai.speed * speedMult : ai.speed * speedMult;
 };
@@ -2492,7 +2500,7 @@ const getPlatformFighterIsOn = (p) => {
 };
 
 const tryJumpToPlatform = (ai, opp) => {
-  if (!ai.grounded || ai.jumpDisabled) return false;
+  if (ai.ducking || !ai.grounded || ai.jumpDisabled) return false;
 
   const aiFeet = ai.y + ai.height;
   const oppAbove = centerY(opp) < centerY(ai) - 65;
@@ -2662,7 +2670,7 @@ const updateAI = (ai) => {
 }
   if (incoming && rand() < aiSettings.projectileBlockChance) {
     if (incoming.type === "poisonorb") {
-      if (ai.grounded && !ai.jumpDisabled && rand() < aiSettings.jumpChance) {
+      if (!ai.ducking && ai.grounded && !ai.jumpDisabled && rand() < aiSettings.jumpChance) {
         ai.vy = ai.jumpPower;
         ai.grounded = false;
       }
@@ -2887,6 +2895,7 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
 
   if (
     ai.grounded &&
+    !ai.ducking &&
     !ai.jumpDisabled &&
     abs > 115 &&
     abs < 260 &&
@@ -3240,23 +3249,23 @@ if (hpW > 0) {
 
       if (p.type === "void" && p.charging) {
         p.vx = 0;
-        p.ducking = false;
+        p.ducking = getHeld("duck");
 
-        if (getHeld("moveLeft")) {
-          p.vx = -p.speed;
-          p.facing = -1;
-        }
-        if (getHeld("moveRight")) {
-          p.vx = p.speed;
-          p.facing = 1;
-        }
+        if (!p.ducking) {
+          if (getHeld("moveLeft")) {
+            p.vx = -p.speed;
+            p.facing = -1;
+          }
+          if (getHeld("moveRight")) {
+            p.vx = p.speed;
+            p.facing = 1;
+          }
 
-        if (getHeld("jump") && !p.jumpDisabled && p.grounded) {
-          p.vy = p.jumpPower;
-          p.grounded = false;
+          if (getHeld("jump") && !p.jumpDisabled && p.grounded) {
+            p.vy = p.jumpPower;
+            p.grounded = false;
+          }
         }
-
-        if (getHeld("duck")) p.ducking = true;
 
         p.blocking = false;
         p.attacking = false;
@@ -3278,23 +3287,23 @@ if (hpW > 0) {
         }
 
         p.vx = 0;
-        p.ducking = false;
+        p.ducking = getHeld("duck");
 
-        if (getHeld("moveLeft")) {
-          p.vx = -p.speed;
-          p.facing = -1;
-        }
-        if (getHeld("moveRight")) {
-          p.vx = p.speed;
-          p.facing = 1;
-        }
+        if (!p.ducking) {
+          if (getHeld("moveLeft")) {
+            p.vx = -p.speed;
+            p.facing = -1;
+          }
+          if (getHeld("moveRight")) {
+            p.vx = p.speed;
+            p.facing = 1;
+          }
 
-        if (getHeld("jump") && !p.jumpDisabled && p.grounded) {
-          p.vy = p.jumpPower;
-          p.grounded = false;
+          if (getHeld("jump") && !p.jumpDisabled && p.grounded) {
+            p.vy = p.jumpPower;
+            p.grounded = false;
+          }
         }
-
-        if (getHeld("duck")) p.ducking = true;
 
         if (getHeld("punch") && !p.attacking) {
           if (p.ducking && p.upperCooldown === 0) {
