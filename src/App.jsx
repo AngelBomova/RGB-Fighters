@@ -1816,17 +1816,17 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
           hitstunFrames = 12;
           break;
         case "purpleball":
-          damage = 3;
+          damage = 4;
           knockback = 15;
           hitstunFrames = 12;
           break;
         case "orangeball":
-          damage = 4;
+          damage = 5;
           knockback = 6;
           hitstunFrames = 10;
           break;
         case "orangeorb":
-          damage = 5;
+          damage = 10;
           knockback = 5;
           hitstunFrames = 14;
           slowFrames = 480;
@@ -1848,7 +1848,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
           hitstunFrames = 18;
           break;
         case "iceball":
-          damage = 2;
+          damage = 3;
           knockback = 4;
           hitstunFrames = 10;
           freezeFrames = 180;
@@ -1861,12 +1861,12 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
           launchUp = true;
           break;
         case "poisonorb":
-          damage = 3;
+          damage = 5;
           knockback = 3;
-          applyPoisonTicks = 12;
+          applyPoisonTicks = 15;
           break;
         case "blackball":
-          damage = 3;
+          damage = 4;
           knockback = 3;
           launchUp = true;
           disableBlock = true;
@@ -2577,7 +2577,7 @@ const updateAI = (ai) => {
 
   if (ai.dashTimer > 0) {
     stopDefense(ai);
-    ai.vx = ai.facing * 18;
+    ai.vx = ai.facing * 12;
     ai.dashTimer--;
     return;
   }
@@ -3337,7 +3337,7 @@ if (hpW > 0) {
         }
 
         if (p.dashTimer > 0) {
-          p.vx = p.facing * 18;
+          p.vx = p.facing * 12;
           p.dashTimer--;
         }
 
@@ -3376,7 +3376,7 @@ if (hpW > 0) {
           } else if (p.type === "light") {
             projectiles.current.push({ x: projX, y: p.y + 48, vx: p.facing * 8, vy: 0, owner: p, team: p.team, type: "whiteball", attackHeight: "low", color: "#f8fafc", radius: 8 });
             playSfx("white_low");
-            cooldown = 500;
+            cooldown = 1000;
           } else {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 10, owner: p, team: p.team, type: "blackball", attackHeight: "mid", color: p.color, radius: 8 });
             playSfx("voidball");
