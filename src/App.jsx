@@ -3370,7 +3370,7 @@ if (hpW > 0) {
             playSfx("iceball");
             cooldown = 5000;
           } else if (p.type === "poison") {
-            projectiles.current.push({ x: projX, y: projY, vx: p.facing * 4, owner: p, team: p.team, type: "poisonorb", attackHeight: "mid", color: "#4ade80", radius: 10 });
+            projectiles.current.push({ x: projX, y: projY, vx: p.facing * 10, owner: p, team: p.team, type: "poisonorb", attackHeight: "mid", color: "#4ade80", radius: 10 });
             playSfx("poisonball");
             cooldown = 2500;
           } else if (p.type === "light") {
