@@ -1890,6 +1890,12 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
         hitstunFrames += 30;
       }
 
+      if (defender.charging) {
+        defender.charging = false;
+        defender.chargeFrames = 0;
+        hitstunFrames += 30;
+      }
+
       if (defender.purpleCharging) {
         defender.purpleCharging = false;
         defender.purpleChargeTimer = 0;
@@ -2577,15 +2583,9 @@ const updateAI = (ai) => {
   }
 
   if (ai.frozen || ai.hitstun || ai.spearStunned) {
-    if (ai.charging) {
-      ai.charging = false;
-      ai.chargeFrames = 0;
-      setManagedTimeout(() => {
-        ai.canSpecial2 = true;
-      }, 2200);
-    }
-
     ai.healing = false;
+    ai.charging = false;
+    ai.chargeFrames = 0;
     ai.purpleCharging = false;
     ai.purpleChargeTimer = 0;
     ai.reflecting = false;
