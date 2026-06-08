@@ -208,10 +208,10 @@ io.on('connection', (socket) => {
 
       const getOpponentStats = async (oppId) => {
         const result = await pool.query(
-          'SELECT username, elo, wins FROM users WHERE id = $1',
+          'SELECT username, wins, losses FROM users WHERE id = $1',
           [oppId]
         );
-        return result.rows[0] || { username: 'Player', elo: 1000, wins: 0 };
+        return result.rows[0] || { username: 'Player', wins: 0, losses: 0 };
       };
 
       const oppStats1 = await getOpponentStats(p2.userId);
@@ -221,8 +221,8 @@ io.on('connection', (socket) => {
         matchId,
         opponent: {
           username: p2.username,
-          elo: oppStats1.elo,
           wins: oppStats1.wins,
+          losses: oppStats1.losses,
         },
         side: 'left',
       });
@@ -231,8 +231,8 @@ io.on('connection', (socket) => {
         matchId,
         opponent: {
           username: p1.username,
-          elo: oppStats2.elo,
           wins: oppStats2.wins,
+          losses: oppStats2.losses,
         },
         side: 'right',
       });
@@ -369,13 +369,20 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('match:end', async (data) => {
+  socket.on('match:end', async (data, ack) => {
     const { matchId, p1Rounds, p2Rounds, winnerId } = data || {};
     const match = activeMatches.get(matchId);
-    if (!match) return;
-    if (socket.id !== match.p1.socketId && socket.id !== match.p2.socketId) return;
+    if (!match) {
+      if (typeof ack === 'function') ack({ ok: false });
+      return;
+    }
+    if (socket.id !== match.p1.socketId && socket.id !== match.p2.socketId) {
+      if (typeof ack === 'function') ack({ ok: false });
+      return;
+    }
     const finalWinnerId = winnerId || (p1Rounds > p2Rounds ? match.p1.userId : p2Rounds > p1Rounds ? match.p2.userId : null);
     await processMatchResult(matchId, p1Rounds, p2Rounds, finalWinnerId).catch((err) => console.error('match:end process err', err));
+    if (typeof ack === 'function') ack({ ok: true });
   });
 
 async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId) {
@@ -400,8 +407,10 @@ async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId) {
         [match.p1.userId, match.p2.userId, null, p1Rounds, p2Rounds, 0]
       );
     } else {
-      eloChange = Math.abs(calculateEloChange(p1Rounds, p2Rounds));
       isP1Winner = String(winnerId) === String(match.p1.userId);
+      const winnerRounds = isP1Winner ? p1Rounds : p2Rounds;
+      const loserRounds = isP1Winner ? p2Rounds : p1Rounds;
+      eloChange = winnerRounds === 2 && loserRounds === 0 ? 20 : winnerRounds === 2 && loserRounds === 1 ? 10 : 0;
 
       if (isP1Winner) {
         await pool.query(

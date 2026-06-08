@@ -114,8 +114,12 @@ async function initSqlite() {
           return { rows: [] };
         }
 
-        if (s.includes('order by elo') && s.includes('limit')) {
-          const rows = data.users.map(toRow).sort((a, b) => b.elo - a.elo).slice(0, 10);
+        if (s.includes('order by wlr') && s.includes('limit')) {
+          const rows = data.users
+            .map(toRow)
+            .map((u) => ({ ...u, wlr: (u.wins || 0) / Math.max(1, u.losses || 0) }))
+            .sort((a, b) => (b.wlr || 0) - (a.wlr || 0) || (b.wins || 0) - (a.wins || 0))
+            .slice(0, 10);
           return { rows };
         }
         if (s.includes('order by wins') && s.includes('limit')) {

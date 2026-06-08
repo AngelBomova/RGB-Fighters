@@ -4341,18 +4341,11 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
     keysPressed.current = {};
     projectiles.current = [];
 
-    roundMsRemainingRef.current = null;
-    lastShownSecondRef.current = null;
-    setRoundTime(null);
-
-    setRoundPhase("countdown");
-    setCountdownValue(3);
-    roundPhaseRef.current = "countdown";
-    countdownRef.current = 3;
+    primeNewRound();
   }, 1200);
 
   return () => window.clearTimeout(id);
-}, [gameOver, matchWinnerText, menuStep]);
+}, [gameOver, matchWinnerText, menuStep, mode]);
 
 useEffect(() => {
   const match = onlineMatchRef.current;
@@ -4367,11 +4360,24 @@ useEffect(() => {
   const winnerId = matchWinnerText === "Team 1" ? match.p1UserId : matchWinnerText === "Team 2" ? match.p2UserId : null;
 
   onlineMatchEndSentRef.current = true;
+  const finishOnlineMatch = () => {
+    refreshOnlineUser();
+    clearOnlineSession({ disconnectSocket: true, keepLobby: false });
+    setSettingsOpen(false);
+    setMode("home");
+    setMenuStep("idle");
+    resetAll();
+  };
+  const fallbackId = window.setTimeout(finishOnlineMatch, 1200);
+
   socket.emit("match:end", {
     matchId: match.matchId,
     p1Rounds,
     p2Rounds,
     winnerId,
+  }, () => {
+    window.clearTimeout(fallbackId);
+    finishOnlineMatch();
   });
 }, [gameOver, matchWinnerText, team1Rounds, team2Rounds, mode, menuStep]);
 
@@ -4817,7 +4823,7 @@ useEffect(() => {
             </div>
           ) : (
             <div className="space-y-6">
-              <p className="text-lg font-light text-gray-500">Logged in as <strong>{user.username}</strong> — ELO: {user.elo} — Record: {user.wins}W - {user.losses}L</p>
+              <p className="text-lg font-light text-gray-500">Logged in as <strong>{user.username}</strong> — Record: {user.wins}W - {user.losses}L</p>
               <div className="flex flex-col items-center gap-4">
                 {matched && (
                   <div className="p-4 border rounded-md w-full max-w-md">
@@ -4825,12 +4831,12 @@ useEffect(() => {
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="font-medium">You ({user.username})</div>
-                        <div className="text-xs">ELO: {user.elo} — {user.wins}W - {user.losses}L</div>
+                        <div className="text-xs">Record: {user.wins}W - {user.losses}L</div>
                         <div className="text-xs">Side: {matched.side === 'left' ? 'Left' : 'Right'}</div>
                       </div>
                       <div>
                         <div className="font-medium">Opponent: {matched.opponent?.username}</div>
-                        <div className="text-xs">ELO: {matched.opponent?.elo} — {matched.opponent?.wins}W</div>
+                        <div className="text-xs">Record: {matched.opponent?.wins ?? 0}W - {matched.opponent?.losses ?? 0}L</div>
                       </div>
                     </div>
                   </div>
@@ -5358,7 +5364,7 @@ useEffect(() => {
       }
     };
 
-    const showOverlay = gameOver;
+    const showOverlay = gameOver && mode !== "online";
 
     return (
       <div className="fixed inset-0 overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif' }}>

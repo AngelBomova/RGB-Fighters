@@ -2,7 +2,14 @@ import React, { useEffect, useState } from 'react';
 import api from '../api';
 
 export default function Leaderboard() {
-  const [data, setData] = useState({ wins: [], elo: [] });
+  const [data, setData] = useState({ wins: [], wlr: [] });
+
+  const formatWlr = (user) => {
+    const wins = Number(user.wins) || 0;
+    const losses = Number(user.losses) || 0;
+    const ratio = typeof user.wlr !== 'undefined' ? Number(user.wlr) : wins / Math.max(1, losses);
+    return Number.isFinite(ratio) ? ratio.toFixed(2) : '0.00';
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -20,16 +27,20 @@ export default function Leaderboard() {
         <div>
           <h4 className="font-medium mb-2">Top by Wins</h4>
           <ol className="list-decimal pl-5">
-            {data.wins.map((u, i) => (
-              <li key={u.id} className="mb-1">{u.username} — {u.wins}W — {u.wins}W - {u.losses}L</li>
+            {data.wins.map((user) => (
+              <li key={user.id || user.username} className="mb-1">
+                {user.username} — {user.wins}W — {user.wins}W - {user.losses}L
+              </li>
             ))}
           </ol>
         </div>
         <div>
-          <h4 className="font-medium mb-2">Top by ELO</h4>
+          <h4 className="font-medium mb-2">Top by WLR</h4>
           <ol className="list-decimal pl-5">
-            {data.elo.map((u, i) => (
-              <li key={u.id} className="mb-1">{u.username} — {u.elo} ELO — {u.wins}W - {u.losses}L</li>
+            {data.wlr.map((user) => (
+              <li key={user.id || user.username} className="mb-1">
+                {user.username} — {formatWlr(user)} WLR — {user.wins}W - {user.losses}L
+              </li>
             ))}
           </ol>
         </div>

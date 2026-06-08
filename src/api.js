@@ -37,9 +37,18 @@ export async function me(token) {
 }
 
 export async function getLeaderboard() {
-  const wins = await request('/api/leaderboard/top-wins');
-  const elo = await request('/api/leaderboard/top-elo');
-  return { wins, elo };
+  const [winsResult, wlrResult] = await Promise.allSettled([
+    request('/api/leaderboard/top-wins'),
+    request('/api/leaderboard/top-wlr'),
+  ]);
+  const wins = winsResult.status === 'fulfilled' ? winsResult.value : [];
+  const wlr = wlrResult.status === 'fulfilled'
+    ? wlrResult.value
+    : wins.map((user) => ({
+        ...user,
+        wlr: (Number(user.wins) || 0) / Math.max(1, Number(user.losses) || 0),
+      }));
+  return { wins, wlr };
 }
 
 export default { register, login, me, getLeaderboard };
