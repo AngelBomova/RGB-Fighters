@@ -14,11 +14,14 @@ export const BANNED_USERNAME_FRAGMENTS = [
   'asshole',
 ];
 
+export const USERNAME_PATTERN = /^[a-z0-9 _-]+$/i;
+
 export const normalizeUsername = (username) => String(username || '').trim();
 
 export const isAllowedUsername = (username) => {
   const normalized = normalizeUsername(username);
   if (!normalized || normalized.length > MAX_USERNAME_LENGTH) return false;
+  if (!USERNAME_PATTERN.test(normalized)) return false;
   const lower = normalized.toLowerCase();
   return !BANNED_USERNAME_FRAGMENTS.some((word) => lower.includes(word));
 };

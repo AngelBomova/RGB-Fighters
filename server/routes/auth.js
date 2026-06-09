@@ -20,7 +20,7 @@ router.post('/register', async (req, res) => {
     }
 
     if (!isAllowedUsername(cleanUsername)) {
-      return res.status(400).json({ error: 'Username contains blocked words' });
+      return res.status(400).json({ error: 'Username can only use letters, numbers, spaces, underscores, and hyphens' });
     }
 
     const existingUser = await pool.query(

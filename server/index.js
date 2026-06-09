@@ -111,11 +111,11 @@ async function forfeitMatch(matchId, leavingSocketId) {
   try {
     const eloChange = calculateEloChange(2, 0);
     await pool.query(
-      'UPDATE users SET wins = wins + 1, elo = CASE WHEN (elo + $1) < 0 THEN 0 ELSE (elo + $1) END, gamesPlayed = COALESCE(gamesPlayed,0) + 1 WHERE id = $2',
+      'UPDATE users SET wins = wins + 1, elo = CASE WHEN (elo + $1) < 0 THEN 0 ELSE (elo + $1) END WHERE id = $2',
       [eloChange, winner.userId]
     );
     await pool.query(
-      'UPDATE users SET losses = losses + 1, elo = CASE WHEN (elo + $1) < 0 THEN 0 ELSE (elo + $1) END, gamesPlayed = COALESCE(gamesPlayed,0) + 1 WHERE id = $2',
+      'UPDATE users SET losses = losses + 1, elo = CASE WHEN (elo + $1) < 0 THEN 0 ELSE (elo + $1) END WHERE id = $2',
       [-eloChange, loser.userId]
     );
     await pool.query(
@@ -395,11 +395,11 @@ async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId) {
 
     if (!winnerId) {
       await pool.query(
-        'UPDATE users SET losses = losses + 1, gamesPlayed = COALESCE(gamesPlayed,0) + 1 WHERE id = $1',
+        'UPDATE users SET losses = losses + 1 WHERE id = $1',
         [match.p1.userId]
       );
       await pool.query(
-        'UPDATE users SET losses = losses + 1, gamesPlayed = COALESCE(gamesPlayed,0) + 1 WHERE id = $1',
+        'UPDATE users SET losses = losses + 1 WHERE id = $1',
         [match.p2.userId]
       );
       await pool.query(
@@ -414,20 +414,20 @@ async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId) {
 
       if (isP1Winner) {
         await pool.query(
-          'UPDATE users SET wins = wins + 1, elo = CASE WHEN (elo + $1) < 0 THEN 0 ELSE (elo + $1) END, gamesPlayed = COALESCE(gamesPlayed,0) + 1 WHERE id = $2',
+          'UPDATE users SET wins = wins + 1, elo = CASE WHEN (elo + $1) < 0 THEN 0 ELSE (elo + $1) END WHERE id = $2',
           [eloChange, match.p1.userId]
         );
         await pool.query(
-          'UPDATE users SET losses = losses + 1, elo = CASE WHEN (elo - $1) < 0 THEN 0 ELSE (elo - $1) END, gamesPlayed = COALESCE(gamesPlayed,0) + 1 WHERE id = $2',
+          'UPDATE users SET losses = losses + 1, elo = CASE WHEN (elo - $1) < 0 THEN 0 ELSE (elo - $1) END WHERE id = $2',
           [eloChange, match.p2.userId]
         );
       } else {
         await pool.query(
-          'UPDATE users SET losses = losses + 1, elo = CASE WHEN (elo - $1) < 0 THEN 0 ELSE (elo - $1) END, gamesPlayed = COALESCE(gamesPlayed,0) + 1 WHERE id = $2',
+          'UPDATE users SET losses = losses + 1, elo = CASE WHEN (elo - $1) < 0 THEN 0 ELSE (elo - $1) END WHERE id = $2',
           [eloChange, match.p1.userId]
         );
         await pool.query(
-          'UPDATE users SET wins = wins + 1, elo = CASE WHEN (elo + $1) < 0 THEN 0 ELSE (elo + $1) END, gamesPlayed = COALESCE(gamesPlayed,0) + 1 WHERE id = $2',
+          'UPDATE users SET wins = wins + 1, elo = CASE WHEN (elo + $1) < 0 THEN 0 ELSE (elo + $1) END WHERE id = $2',
           [eloChange, match.p2.userId]
         );
       }
