@@ -72,7 +72,7 @@ app.get('/api/match/state/:matchId', (req, res) => {
   return res.json({ ok: true, matchId: match.matchId, state: match.latestState });
 });
 
-app.post('/api/match/state/:matchId', (req, res) => {
+app.post('/api/match/state/:matchId', async (req, res) => {
   const match = activeMatches.get(req.params.matchId);
   if (!match) {
     return res.status(404).json({ ok: false });
@@ -86,6 +86,7 @@ app.post('/api/match/state/:matchId', (req, res) => {
   match.latestState = state;
   io.to(match.p1.socketId).emit('state:sync', { matchId: match.matchId, state });
   io.to(match.p2.socketId).emit('state:sync', { matchId: match.matchId, state });
+  await recordMatchResultFromState(match.matchId, state).catch((err) => console.error('state result record err', err));
   return res.json({ ok: true });
 });
 
@@ -153,6 +154,31 @@ async function forfeitMatch(matchId, leavingSocketId) {
   io.to(match.p2.socketId).emit('match:ended', { winner: winner.userId });
   activeMatches.delete(matchId);
   return true;
+}
+
+async function recordMatchResultFromState(matchId, state) {
+  const match = activeMatches.get(matchId);
+  if (!match || match.resultRecorded) return false;
+  if (!state?.gameOver || !state?.matchWinnerText) return false;
+
+  const team1Rounds = Number(state.team1Rounds) || 0;
+  const team2Rounds = Number(state.team2Rounds) || 0;
+  const p1Rounds = state.matchWinnerText === 'Team 1' ? Math.max(team1Rounds, 2) : team1Rounds;
+  const p2Rounds = state.matchWinnerText === 'Team 2' ? Math.max(team2Rounds, 2) : team2Rounds;
+  const winnerId = state.matchWinnerText === 'Team 1'
+    ? match.p1.userId
+    : state.matchWinnerText === 'Team 2'
+      ? match.p2.userId
+      : null;
+
+  match.resultRecorded = true;
+  try {
+    await processMatchResult(matchId, p1Rounds, p2Rounds, winnerId);
+    return true;
+  } catch (err) {
+    match.resultRecorded = false;
+    throw err;
+  }
 }
 
 io.on('connection', (socket) => {
@@ -350,6 +376,7 @@ io.on('connection', (socket) => {
     match.latestState = state;
     io.to(match.p1.socketId).emit('state:sync', { matchId, state });
     io.to(match.p2.socketId).emit('state:sync', { matchId, state });
+    recordMatchResultFromState(matchId, state).catch((err) => console.error('socket state result record err', err));
   });
 
   socket.on('queue:cancel', () => {
@@ -381,8 +408,15 @@ io.on('connection', (socket) => {
       return;
     }
     const finalWinnerId = winnerId || (p1Rounds > p2Rounds ? match.p1.userId : p2Rounds > p1Rounds ? match.p2.userId : null);
-    await processMatchResult(matchId, p1Rounds, p2Rounds, finalWinnerId).catch((err) => console.error('match:end process err', err));
-    if (typeof ack === 'function') ack({ ok: true });
+    try {
+      match.resultRecorded = true;
+      await processMatchResult(matchId, p1Rounds, p2Rounds, finalWinnerId);
+      if (typeof ack === 'function') ack({ ok: true });
+    } catch (err) {
+      match.resultRecorded = false;
+      console.error('match:end process err', err);
+      if (typeof ack === 'function') ack({ ok: false });
+    }
   });
 
 async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId) {
@@ -459,9 +493,10 @@ async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId) {
       eloChange: winnerId ? (isP1Winner ? -eloChange : eloChange) : 0,
     });
 
-      activeMatches.delete(matchId);
+    activeMatches.delete(matchId);
     } catch (err) {
       console.error('Match end error:', err);
+      throw err;
     }
   }
 
