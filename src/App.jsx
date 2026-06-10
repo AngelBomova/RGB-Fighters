@@ -234,6 +234,17 @@ const toggleFullscreen = async () => {
     special1: "",
     special2: "",
   };
+  const DEFAULT_P1_CONTROLLER = {
+    moveLeft: "xbox:left-stick-left",
+    moveRight: "xbox:left-stick-right",
+    jump: "xbox:a",
+    duck: "xbox:left-stick-down",
+    block: "xbox:lb",
+    punch: "xbox:x",
+    kick: "xbox:b",
+    special1: "xbox:y",
+    special2: "xbox:rb",
+  };
 
   const loadBinds = (key, fallback) => {
     try {
@@ -258,8 +269,12 @@ const toggleFullscreen = async () => {
 
   const [p1Binds, setP1Binds] = useState(() => loadBinds("rgb_fighters_keybinds_p1_v3", DEFAULT_P1));
   const [p2Binds, setP2Binds] = useState(() => loadBinds("rgb_fighters_keybinds_p2_v3", DEFAULT_P2));
+  const [p1ControllerBinds, setP1ControllerBinds] = useState(() => loadBinds("rgb_fighters_controller_binds_p1_v1", DEFAULT_P1_CONTROLLER));
   const p1BindsRef = useRef(p1Binds);
   const p2BindsRef = useRef(p2Binds);
+  const p1ControllerBindsRef = useRef(p1ControllerBinds);
+  const previousGamepadPressedRef = useRef({});
+  const previousGamepadActionsRef = useRef({});
   const onlineOpponentBindsRef = useRef({
     moveLeft: "__remote_moveLeft",
     moveRight: "__remote_moveRight",
@@ -278,6 +293,13 @@ const toggleFullscreen = async () => {
       localStorage.setItem("rgb_fighters_keybinds_p1_v3", JSON.stringify(p1Binds));
     } catch {}
   }, [p1Binds]);
+
+  useEffect(() => {
+    p1ControllerBindsRef.current = p1ControllerBinds;
+    try {
+      localStorage.setItem("rgb_fighters_controller_binds_p1_v1", JSON.stringify(p1ControllerBinds));
+    } catch {}
+  }, [p1ControllerBinds]);
 
   useEffect(() => {
   const onFullscreenChange = () => {
@@ -354,6 +376,7 @@ const toggleFullscreen = async () => {
   }, []);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState("keyboard");
   const [listeningFor, setListeningFor] = useState(null);
   const listeningForRef = useRef(null);
 
@@ -485,6 +508,35 @@ const toggleFullscreen = async () => {
     return key.length === 1 ? key.toUpperCase() : key;
   };
 
+  const XBOX_INPUT_LABELS = {
+    "xbox:a": "A",
+    "xbox:b": "B",
+    "xbox:x": "X",
+    "xbox:y": "Y",
+    "xbox:lb": "LB",
+    "xbox:rb": "RB",
+    "xbox:lt": "LT",
+    "xbox:rt": "RT",
+    "xbox:view": "View",
+    "xbox:menu": "Menu",
+    "xbox:left-stick": "Left Stick Press",
+    "xbox:right-stick": "Right Stick Press",
+    "xbox:dpad-up": "D-Pad Up",
+    "xbox:dpad-down": "D-Pad Down",
+    "xbox:dpad-left": "D-Pad Left",
+    "xbox:dpad-right": "D-Pad Right",
+    "xbox:left-stick-left": "Left Stick Left",
+    "xbox:left-stick-right": "Left Stick Right",
+    "xbox:left-stick-up": "Left Stick Up",
+    "xbox:left-stick-down": "Left Stick Down",
+    "xbox:right-stick-left": "Right Stick Left",
+    "xbox:right-stick-right": "Right Stick Right",
+    "xbox:right-stick-up": "Right Stick Up",
+    "xbox:right-stick-down": "Right Stick Down",
+  };
+
+  const prettyControllerInput = (input) => XBOX_INPUT_LABELS[input] || "Unbound";
+
   const isBindableKey = (k) => {
     if (!k) return false;
 
@@ -508,6 +560,18 @@ const toggleFullscreen = async () => {
 
     for (const action of Object.keys(next)) {
       if (next[action] === keyToRemove) {
+        next[action] = "";
+      }
+    }
+
+    return next;
+  };
+
+  const clearControllerInputFromBindSet = (bindSet, inputToRemove) => {
+    const next = { ...bindSet };
+
+    for (const action of Object.keys(next)) {
+      if (next[action] === inputToRemove) {
         next[action] = "";
       }
     }
@@ -540,12 +604,24 @@ const toggleFullscreen = async () => {
     }
   };
 
+  const applyNewControllerBinding = (action, input) => {
+    if (!input) return;
+
+    keysPressed.current = {};
+    setP1ControllerBinds((prev) => {
+      const next = clearControllerInputFromBindSet(prev, input);
+      next[action] = input;
+      return next;
+    });
+  };
+
   useEffect(() => {
     const onKey = (e) => {
       if (!settingsOpen) return;
 
       const target = listeningForRef.current;
       if (!target) return;
+      if (target.type === "controller") return;
 
       e.preventDefault();
       e.stopPropagation();
@@ -579,6 +655,128 @@ const toggleFullscreen = async () => {
       window.removeEventListener("keydown", onKey, true);
     };
   }, [settingsOpen]);
+
+  useEffect(() => {
+    const buttonTokens = [
+      "xbox:a",
+      "xbox:b",
+      "xbox:x",
+      "xbox:y",
+      "xbox:lb",
+      "xbox:rb",
+      "xbox:lt",
+      "xbox:rt",
+      "xbox:view",
+      "xbox:menu",
+      "xbox:left-stick",
+      "xbox:right-stick",
+      "xbox:dpad-up",
+      "xbox:dpad-down",
+      "xbox:dpad-left",
+      "xbox:dpad-right",
+    ];
+    const axisTokens = [
+      "xbox:left-stick-left",
+      "xbox:left-stick-right",
+      "xbox:left-stick-up",
+      "xbox:left-stick-down",
+      "xbox:right-stick-left",
+      "xbox:right-stick-right",
+      "xbox:right-stick-up",
+      "xbox:right-stick-down",
+    ];
+    const allTokens = [...buttonTokens, ...axisTokens];
+    const buttonMap = {
+      0: "xbox:a",
+      1: "xbox:b",
+      2: "xbox:x",
+      3: "xbox:y",
+      4: "xbox:lb",
+      5: "xbox:rb",
+      6: "xbox:lt",
+      7: "xbox:rt",
+      8: "xbox:view",
+      9: "xbox:menu",
+      10: "xbox:left-stick",
+      11: "xbox:right-stick",
+      12: "xbox:dpad-up",
+      13: "xbox:dpad-down",
+      14: "xbox:dpad-left",
+      15: "xbox:dpad-right",
+    };
+
+    const readPressed = () => {
+      const gamepads = typeof navigator !== "undefined" && navigator.getGamepads ? Array.from(navigator.getGamepads()) : [];
+      const gamepad = gamepads.find(Boolean);
+      const pressed = {};
+      if (!gamepad) return pressed;
+
+      for (const [index, token] of Object.entries(buttonMap)) {
+        const button = gamepad.buttons[Number(index)];
+        if (button?.pressed || button?.value > 0.5) pressed[token] = true;
+      }
+
+      const leftX = gamepad.axes[0] || 0;
+      const leftY = gamepad.axes[1] || 0;
+      const rightX = gamepad.axes[2] || 0;
+      const rightY = gamepad.axes[3] || 0;
+      const deadzone = 0.5;
+
+      if (leftX < -deadzone) pressed["xbox:left-stick-left"] = true;
+      if (leftX > deadzone) pressed["xbox:left-stick-right"] = true;
+      if (leftY < -deadzone) pressed["xbox:left-stick-up"] = true;
+      if (leftY > deadzone) pressed["xbox:left-stick-down"] = true;
+      if (rightX < -deadzone) pressed["xbox:right-stick-left"] = true;
+      if (rightX > deadzone) pressed["xbox:right-stick-right"] = true;
+      if (rightY < -deadzone) pressed["xbox:right-stick-up"] = true;
+      if (rightY > deadzone) pressed["xbox:right-stick-down"] = true;
+
+      return pressed;
+    };
+
+    let frameId = 0;
+    const tick = () => {
+      const pressed = readPressed();
+      const previousPressed = previousGamepadPressedRef.current;
+
+      for (const token of allTokens) {
+        keysPressed.current[token] = !!pressed[token];
+      }
+
+      const target = listeningForRef.current;
+      if (target?.type === "controller") {
+        const newlyPressed = allTokens.find((token) => pressed[token] && !previousPressed[token]);
+        if (newlyPressed) {
+          applyNewControllerBinding(target.action, newlyPressed);
+          listeningForRef.current = null;
+          setListeningFor(null);
+          keysPressed.current = {};
+        }
+      }
+
+      if (mode === "online" && menuStep === "playing" && onlineMatchRef.current?.matchId) {
+        const actions = {};
+        const binds = p1ControllerBindsRef.current || {};
+        for (const action of Object.keys(ACTION_LABELS)) {
+          const token = binds[action];
+          actions[action] = !!(token && pressed[token]);
+        }
+
+        const previousActions = previousGamepadActionsRef.current;
+        const changed = Object.keys(ACTION_LABELS).some((action) => actions[action] !== previousActions[action]);
+        if (changed) {
+          previousGamepadActionsRef.current = actions;
+          sendOnlineInputs();
+        }
+      }
+
+      previousGamepadPressedRef.current = pressed;
+      frameId = window.requestAnimationFrame(tick);
+    };
+
+    frameId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [mode, menuStep]);
 
     useEffect(() => {
     if (!document.getElementById("tailwind-script")) {
@@ -829,10 +1027,12 @@ const toggleFullscreen = async () => {
     if (!matchId || !socket) return;
 
     const binds = p1BindsRef.current || {};
+    const controllerBinds = p1ControllerBindsRef.current || {};
     const actions = {};
     for (const action of Object.keys(ACTION_LABELS)) {
       const key = binds[action];
-      actions[action] = !!keysPressed.current[key];
+      const controllerInput = controllerBinds[action];
+      actions[action] = !!keysPressed.current[key] || !!keysPressed.current[controllerInput];
     }
 
     socket.emit('input:send', { matchId, inputs: actions });
@@ -3230,15 +3430,23 @@ if (hpW > 0) {
           : (p1BindsRef.current || binds || {})
         : (binds || {});
       if (!actionBinds) return;
+      const canUseP1Controller = isOnline
+        ? !isOnlineRemote
+        : p.id === "p1" || p.label === "P1";
       const getHeld = (action) => {
         if (isOnlineRemote) return !!onlineRemoteInputsRef.current[action];
-        return !!(actionBinds[action] && keysPressed.current[actionBinds[action]]);
+        const keyboardHeld = !!(actionBinds[action] && keysPressed.current[actionBinds[action]]);
+        if (!canUseP1Controller) return keyboardHeld;
+        const controllerInput = p1ControllerBindsRef.current?.[action];
+        return keyboardHeld || !!(controllerInput && keysPressed.current[controllerInput]);
       };
       const clearHeld = (action) => {
         if (isOnlineRemote) {
           onlineRemoteInputsRef.current[action] = false;
         } else if (actionBinds[action]) {
           keysPressed.current[actionBinds[action]] = false;
+          const controllerInput = p1ControllerBindsRef.current?.[action];
+          if (canUseP1Controller && controllerInput) keysPressed.current[controllerInput] = false;
         }
       };
 
@@ -4528,7 +4736,9 @@ useEffect(() => {
 
     const Row = ({ title, player, action, currentKey }) => {
       const active =
-        listeningFor?.player === player && listeningFor?.action === action;
+        (!listeningFor?.type || listeningFor?.type === "keyboard") &&
+        listeningFor?.player === player &&
+        listeningFor?.action === action;
 
       return (
         <div
@@ -4568,7 +4778,60 @@ useEffect(() => {
                 listeningForRef.current = null;
                 setListeningFor(null);
               } else {
-                const next = { player, action };
+                const next = { type: "keyboard", player, action };
+                listeningForRef.current = next;
+                setListeningFor(next);
+              }
+            }}
+          >
+            {active ? "Listening..." : "Change"}
+          </button>
+        </div>
+      );
+    };
+
+    const ControllerRow = ({ title, action, currentInput }) => {
+      const active = listeningFor?.type === "controller" && listeningFor?.action === action;
+
+      return (
+        <div
+          className={`flex items-center justify-between gap-3 p-4 rounded-2xl border transition ${
+            active
+              ? "border-orange-600 bg-orange-50"
+              : "border-gray-100 bg-white"
+          }`}
+        >
+          <div>
+            <div className="text-sm text-gray-900 font-light">{title}</div>
+            <div className="text-xs text-gray-500 font-light mt-1">
+              Current:{" "}
+              <span className="font-medium text-gray-700">
+                {prettyControllerInput(currentInput)}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className={`rounded-2xl px-4 py-2 border transition text-sm font-light ${
+              active
+                ? "border-orange-600 bg-orange-600 text-white"
+                : "border-gray-200 hover:bg-gray-50 text-gray-800"
+            }`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+
+              keysPressed.current = {};
+
+              if (active) {
+                listeningForRef.current = null;
+                setListeningFor(null);
+              } else {
+                const next = { type: "controller", player: "p1", action };
                 listeningForRef.current = next;
                 setListeningFor(next);
               }
@@ -4594,8 +4857,22 @@ useEffect(() => {
       </>
     );
 
+    const renderControllerRows = (binds) => (
+      <>
+        <ControllerRow title="Move Left" action="moveLeft" currentInput={binds.moveLeft} />
+        <ControllerRow title="Move Right" action="moveRight" currentInput={binds.moveRight} />
+        <ControllerRow title="Jump" action="jump" currentInput={binds.jump} />
+        <ControllerRow title="Duck" action="duck" currentInput={binds.duck} />
+        <ControllerRow title="Block" action="block" currentInput={binds.block} />
+        <ControllerRow title="Punch" action="punch" currentInput={binds.punch} />
+        <ControllerRow title="Kick" action="kick" currentInput={binds.kick} />
+        <ControllerRow title="Special Move 1" action="special1" currentInput={binds.special1} />
+        <ControllerRow title="Special Move 2" action="special2" currentInput={binds.special2} />
+      </>
+    );
+
     const listeningLabel = listeningFor
-      ? `${listeningFor.player === "p1" ? "Player 1" : "Player 2"} ${
+      ? `${listeningFor.type === "controller" ? "Player 1 Controller" : listeningFor.player === "p1" ? "Player 1" : "Player 2"} ${
           ACTION_LABELS[listeningFor.action] || listeningFor.action
         }`
       : "";
@@ -4637,81 +4914,129 @@ useEffect(() => {
 
           {listeningFor && (
             <div className="mt-4 rounded-2xl border border-gray-900 bg-gray-50 p-4 text-sm font-light text-gray-800">
-              Press a key for{" "}
+              {listeningFor.type === "controller"
+                ? "Press a Microsoft/Xbox controller button or move a stick for "
+                : "Press a key for "}
               <span className="font-medium text-gray-900">{listeningLabel}</span>.
-              <span className="text-gray-500"> Esc cancels.</span>
+              <span className="text-gray-500">
+                {listeningFor.type === "controller" ? " Click Change again to cancel." : " Esc cancels."}
+              </span>
             </div>
           )}
 
-          <div className="mt-6 rounded-3xl border border-gray-200 bg-gray-50 p-5">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <div className="text-sm font-light text-gray-700">Music</div>
-                <div className="text-xs text-gray-500 font-light mt-1">Music volume</div>
-              </div>
-              <div className="text-sm font-medium text-gray-800 w-10 text-right">{musicVolume}</div>
-            </div>
-
-            <div className="px-[10px]">
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="10"
-                value={musicVolume}
-                onInput={(e) => {
-                  const next = Math.max(0, Math.min(100, Math.round(Number(e.target.value) / 10) * 10));
-                  setMusicVolume(next);
+          <div className="mt-6 flex flex-wrap gap-3">
+            {[
+              ["keyboard", "Keyboard + Audio"],
+              ["controller", "Controller (P1)"],
+            ].map(([tab, label]) => (
+              <button
+                key={tab}
+                type="button"
+                className={`rounded-2xl px-4 py-2 border transition text-sm font-light ${
+                  settingsTab === tab
+                    ? "border-gray-900 bg-gray-900 text-white"
+                    : "border-gray-200 hover:bg-gray-50 text-gray-800"
+                }`}
+                onClick={() => {
+                  listeningForRef.current = null;
+                  setListeningFor(null);
+                  keysPressed.current = {};
+                  setSettingsTab(tab);
                 }}
-                onChange={(e) => {
-                  const next = Math.max(0, Math.min(100, Math.round(Number(e.target.value) / 10) * 10));
-                  setMusicVolume(next);
-                }}
-                className="audio-step-slider mt-4 w-full cursor-pointer"
-                style={{ "--fill": `${musicVolume}%` }}
-              />
-            </div>
-
-            <div className="mt-6 flex items-center justify-between gap-4">
-              <div>
-                <div className="text-sm font-light text-gray-700">SFX</div>
-                <div className="text-xs text-gray-500 font-light mt-1">Sound effects volume</div>
-              </div>
-              <div className="text-sm font-medium text-gray-800 w-10 text-right">{sfxVolume}</div>
-            </div>
-
-            <div className="px-[10px]">
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="10"
-                value={sfxVolume}
-                onInput={(e) => {
-                  const next = Math.max(0, Math.min(100, Math.round(Number(e.target.value) / 10) * 10));
-                  setSfxVolume(next);
-                }}
-                onChange={(e) => {
-                  const next = Math.max(0, Math.min(100, Math.round(Number(e.target.value) / 10) * 10));
-                  setSfxVolume(next);
-                }}
-                className="audio-step-slider mt-4 w-full cursor-pointer"
-                style={{ "--fill": `${sfxVolume}%` }}
-              />
-            </div>
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-3">
-              <div className="text-sm font-light text-gray-700">Player 1</div>
-              {renderPlayerRows("p1", p1Binds)}
-            </div>
+          {settingsTab === "keyboard" && (
+            <>
+              <div className="mt-6 rounded-3xl border border-gray-200 bg-gray-50 p-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-light text-gray-700">Music</div>
+                    <div className="text-xs text-gray-500 font-light mt-1">Music volume</div>
+                  </div>
+                  <div className="text-sm font-medium text-gray-800 w-10 text-right">{musicVolume}</div>
+                </div>
 
-            <div className="space-y-3">
-              <div className="text-sm font-light text-gray-700">Player 2</div>
-              {renderPlayerRows("p2", p2Binds)}
+                <div className="px-[10px]">
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="10"
+                    value={musicVolume}
+                    onInput={(e) => {
+                      const next = Math.max(0, Math.min(100, Math.round(Number(e.target.value) / 10) * 10));
+                      setMusicVolume(next);
+                    }}
+                    onChange={(e) => {
+                      const next = Math.max(0, Math.min(100, Math.round(Number(e.target.value) / 10) * 10));
+                      setMusicVolume(next);
+                    }}
+                    className="audio-step-slider mt-4 w-full cursor-pointer"
+                    style={{ "--fill": `${musicVolume}%` }}
+                  />
+                </div>
+
+                <div className="mt-6 flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-light text-gray-700">SFX</div>
+                    <div className="text-xs text-gray-500 font-light mt-1">Sound effects volume</div>
+                  </div>
+                  <div className="text-sm font-medium text-gray-800 w-10 text-right">{sfxVolume}</div>
+                </div>
+
+                <div className="px-[10px]">
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="10"
+                    value={sfxVolume}
+                    onInput={(e) => {
+                      const next = Math.max(0, Math.min(100, Math.round(Number(e.target.value) / 10) * 10));
+                      setSfxVolume(next);
+                    }}
+                    onChange={(e) => {
+                      const next = Math.max(0, Math.min(100, Math.round(Number(e.target.value) / 10) * 10));
+                      setSfxVolume(next);
+                    }}
+                    className="audio-step-slider mt-4 w-full cursor-pointer"
+                    style={{ "--fill": `${sfxVolume}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <div className="text-sm font-light text-gray-700">Player 1</div>
+                  {renderPlayerRows("p1", p1Binds)}
+                </div>
+
+                <div className="space-y-3">
+                  <div className="text-sm font-light text-gray-700">Player 2</div>
+                  {renderPlayerRows("p2", p2Binds)}
+                </div>
+              </div>
+            </>
+          )}
+
+          {settingsTab === "controller" && (
+            <div className="mt-6 rounded-3xl border border-orange-100 bg-orange-50/40 p-5">
+              <div>
+                <div className="text-sm font-light text-gray-800">Player 1 Controller</div>
+                <div className="text-xs text-gray-500 font-light mt-1">
+                  Microsoft/Xbox layout only. Player 2 stays keyboard only.
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                {renderControllerRows(p1ControllerBinds)}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
             <button
@@ -4723,6 +5048,7 @@ useEffect(() => {
                 keysPressed.current = {};
                 setP1Binds(DEFAULT_P1);
                 setP2Binds(DEFAULT_P2);
+                setP1ControllerBinds(DEFAULT_P1_CONTROLLER);
                 setMusicVolume(50);
                 setSfxVolume(50);
               }}
@@ -4758,7 +5084,9 @@ useEffect(() => {
           </div>
 
           <div className="mt-4 text-xs text-gray-500 font-light">
-            Tip: Click Change, press one key, and it will automatically save. Duplicate keys are removed from the other player so controls do not overlap.
+            {settingsTab === "controller"
+              ? "Tip: Connect an Xbox controller, click Change, then press a button or move a stick. Controller binds only affect Player 1."
+              : "Tip: Click Change, press one key, and it will automatically save. Duplicate keys are removed from the other player so controls do not overlap."}
           </div>
         </div>
       </div>
