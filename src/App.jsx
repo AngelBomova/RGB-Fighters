@@ -877,7 +877,7 @@ const toggleFullscreen = async () => {
       ? "Double Damage & Boost"
       : c === "yellow"
       ? "Spear & Reflect"
-      : "Triple Fire & Slowdown";
+      : "Triple Fire & Speed Charge";
   const shuffle = (arr) => {
     const a = [...arr];
     for (let i = a.length - 1; i > 0; i--) {
