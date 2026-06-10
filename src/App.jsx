@@ -4634,8 +4634,7 @@ useEffect(() => {
   const match = onlineMatchRef.current;
   const socket = socketRef.current;
   const isOnlineMatch = mode === "online" && menuStep === "playing" && match?.matchId;
-  const isHost = match?.host === true || match?.side === "left";
-  if (!isOnlineMatch || !isHost || !socket || !gameOver || !matchWinnerText) return;
+  if (!isOnlineMatch || !socket || !gameOver || !matchWinnerText) return;
   if (onlineMatchEndSentRef.current) return;
 
   const p1Rounds = matchWinnerText === "Team 1" ? Math.max(team1Rounds, 2) : team1Rounds;
