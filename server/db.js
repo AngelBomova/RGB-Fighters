@@ -29,26 +29,35 @@ async function initSqlite() {
     const Database = mod.default || mod;
     const dbFile = process.env.SQLITE_DB_FILE || path.join(__dirname, 'db.sqlite');
     const db = new Database(dbFile);
+    const convertPostgresPlaceholders = (sql, params = []) => {
+      const convertedParams = [];
+      const convertedSql = sql.replace(/\$(\d+)/g, (_, indexText) => {
+        convertedParams.push(params[Number(indexText) - 1]);
+        return '?';
+      });
+
+      return { convertedSql, convertedParams: convertedParams.length ? convertedParams : params };
+    };
 
     const wrapper = {
       async query(sql, params = []) {
         try {
-          const converted = sql.replace(/\$\d+/g, '?');
+          const { convertedSql: converted, convertedParams } = convertPostgresPlaceholders(sql, params);
           const hasReturning = /RETURNING\s+/i.test(converted);
           if (hasReturning) {
             const withoutReturning = converted.replace(/RETURNING[\s\S]*$/i, '');
-            const info = db.prepare(withoutReturning).run(...params);
+            const info = db.prepare(withoutReturning).run(...convertedParams);
             const lastId = info.lastInsertRowid;
             const rows = db.prepare('SELECT id, username, elo, wins, losses FROM users WHERE id = ?').all(lastId);
             return { rows };
           }
 
           if (/^\s*select/i.test(converted)) {
-            const rows = db.prepare(converted).all(...params);
+            const rows = db.prepare(converted).all(...convertedParams);
             return { rows };
           }
 
-          const info = db.prepare(converted).run(...params);
+          const info = db.prepare(converted).run(...convertedParams);
           return { rows: [], info };
         } catch (err) {
           throw err;
