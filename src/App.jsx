@@ -4379,16 +4379,28 @@ useEffect(() => {
   };
   const fallbackId = window.setTimeout(finishOnlineMatch, 1200);
 
-  socket.emit("match:end", {
+  const resultPayload = {
     matchId: match.matchId,
     p1Rounds,
     p2Rounds,
     winnerId,
-  }, () => {
+  };
+  const authToken = token || (typeof localStorage !== "undefined" ? localStorage.getItem("rgb_token") : null);
+
+  if (authToken) {
+    fetch(`${apiBaseUrl}/api/match/end`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: authToken, ...resultPayload }),
+      keepalive: true,
+    }).catch(() => {});
+  }
+
+  socket.emit("match:end", resultPayload, () => {
     window.clearTimeout(fallbackId);
     finishOnlineMatch();
   });
-}, [gameOver, matchWinnerText, team1Rounds, team2Rounds, mode, menuStep]);
+}, [gameOver, matchWinnerText, team1Rounds, team2Rounds, mode, menuStep, token]);
 
   if (!tailwindLoaded) return <div style={{ padding: 20, textAlign: "center" }}>Loading…</div>;
 
