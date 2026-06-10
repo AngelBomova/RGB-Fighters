@@ -60,6 +60,13 @@ async function initSqlite() {
           const info = db.prepare(converted).run(...convertedParams);
           return { rows: [], info };
         } catch (err) {
+          console.error('SQLite query error:', {
+            message: err?.message,
+            sql,
+            convertedSql: typeof converted !== 'undefined' ? converted : null,
+            params,
+            convertedParams: typeof convertedParams !== 'undefined' ? convertedParams : null,
+          });
           throw err;
         }
       },

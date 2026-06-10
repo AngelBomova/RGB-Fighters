@@ -10,6 +10,7 @@ import { verifyToken, verifySocketToken } from './middleware/auth.js';
 
 const app = express();
 const httpServer = createServer(app);
+const SERVER_VERSION = 'online-results-v4';
 const configuredFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 const allowSocketOrigin = (origin, callback) => {
   const allowed =
@@ -30,7 +31,7 @@ app.use(cors());
 app.use(express.json());
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, version: SERVER_VERSION });
 });
 
 app.use('/api/auth', authRoutes);
@@ -532,6 +533,7 @@ async function start() {
 
     httpServer.listen(PORT, () => {
       console.log(`RGB Fighters server running on port ${PORT}`);
+      console.log(`Server version: ${SERVER_VERSION}`);
       console.log(`CORS enabled for: ${configuredFrontendUrl} and local dev ports`);
     });
   } catch (err) {
