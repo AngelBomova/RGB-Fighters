@@ -955,7 +955,10 @@ const toggleFullscreen = async () => {
         chargeFrames: p.chargeFrames,
         purpleCharging: p.purpleCharging,
         purpleChargeTimer: p.purpleChargeTimer,
+        orangeCharging: p.orangeCharging,
+        orangeChargeTimer: p.orangeChargeTimer,
         speedBoostTimer: p.speedBoostTimer,
+        cooldownBoostTimer: p.cooldownBoostTimer,
         damageAmpTimer: p.damageAmpTimer,
         spearLocked: p.spearLocked,
         spearStunned: p.spearStunned,
@@ -1456,7 +1459,10 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
         chargeFrames: 0,
         purpleCharging: false,
         purpleChargeTimer: 0,
+        orangeCharging: false,
+        orangeChargeTimer: 0,
         speedBoostTimer: 0,
+        cooldownBoostTimer: 0,
         damageAmpTimer: 0,
         spearLocked: false,
         spearStunned: false,
@@ -1627,7 +1633,10 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
 
           p.purpleCharging = false;
           p.purpleChargeTimer = 0;
+          p.orangeCharging = false;
+          p.orangeChargeTimer = 0;
           p.speedBoostTimer = 0;
+          p.cooldownBoostTimer = 0;
           p.damageAmpTimer = 0;
           p.spearLocked = false;
           p.spearStunned = false;
@@ -1902,6 +1911,12 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
         hitstunFrames += 30;
       }
 
+      if (defender.orangeCharging) {
+        defender.orangeCharging = false;
+        defender.orangeChargeTimer = 0;
+        hitstunFrames += 30;
+      }
+
       if (defender.reflecting) {
         defender.reflecting = false;
         defender.reflectTimer = 0;
@@ -2027,6 +2042,10 @@ const stopDefense = (ai) => {
   ai.ducking = false;
 };
 
+const meleeCooldown = (fighter, baseCooldown) => (
+  fighter.cooldownBoostTimer > 0 ? Math.ceil(baseCooldown * 0.5) : baseCooldown
+);
+
   const beginMelee = (ai, attackType) => {
     if (ai.attacking || ai.hitstun || ai.frozen) return false;
 
@@ -2039,7 +2058,7 @@ const stopDefense = (ai) => {
       ai.attackType = "punch";
       ai.attackHeight = "mid";
       ai.attackTimer = 15;
-      ai.punchCooldown = 20;
+      ai.punchCooldown = meleeCooldown(ai, 20);
       playSfx("punch");
       return true;
     }
@@ -2049,7 +2068,7 @@ const stopDefense = (ai) => {
       ai.attackType = "kick";
       ai.attackHeight = "overhead";
       ai.attackTimer = 15;
-      ai.kickCooldown = 40;
+      ai.kickCooldown = meleeCooldown(ai, 40);
       playSfx("kick");
       return true;
     }
@@ -2059,7 +2078,7 @@ const stopDefense = (ai) => {
     ai.attackType = "sweep";
       ai.attackHeight = "low";
       ai.attackTimer = 15;
-      ai.sweepCooldown = 50;
+      ai.sweepCooldown = meleeCooldown(ai, 50);
       ai.ducking = true;
       playSfx("sweep");
       return true;
@@ -2070,7 +2089,7 @@ const stopDefense = (ai) => {
       ai.attackType = "uppercut";
       ai.attackHeight = "high";
       ai.attackTimer = 15;
-      ai.upperCooldown = 60;
+      ai.upperCooldown = meleeCooldown(ai, 60);
       playSfx("uppercut");
       return true;
     }
@@ -2079,7 +2098,7 @@ const stopDefense = (ai) => {
 };
 
 const beginProjectile = (ai) => {
-  if (!ai.canProjectile || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging) return false;
+  if (!ai.canProjectile || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging) return false;
 
   const projX = ai.x + (ai.facing > 0 ? ai.width : 0);
   const projY = ai.y + 25;
@@ -2212,7 +2231,7 @@ const beginProjectile = (ai) => {
 };
 
 const beginRedDash = (ai) => {
-  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging) return false;
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging) return false;
 
   stopDefense(ai);
   ai.attacking = true;
@@ -2232,7 +2251,7 @@ const beginRedDash = (ai) => {
 };
 
 const beginIceSlowOrb = (ai) => {
-  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging) return false;
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging) return false;
 
   projectiles.current.push({
     x: ai.x + (ai.facing > 0 ? ai.width : 0),
@@ -2256,7 +2275,7 @@ const beginIceSlowOrb = (ai) => {
 };
 
 const beginWhiteDrop = (ai, target) => {
-  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || !target) return false;
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging || !target) return false;
 
   const dropX = target.x + target.width / 2;
   const knockbackDir = dropX >= centerX(ai) ? 1 : -1;
@@ -2285,7 +2304,7 @@ const beginWhiteDrop = (ai, target) => {
 };
 
 const beginPurplePowerUp = (ai) => {
-  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.speedBoostTimer > 0) return false;
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging || ai.speedBoostTimer > 0) return false;
 
   stopDefense(ai);
   ai.vx = 0;
@@ -2305,7 +2324,7 @@ const beginPurplePowerUp = (ai) => {
 };
 
 const beginYellowReflect = (ai) => {
-  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging) return false;
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging) return false;
 
   stopDefense(ai);
   ai.vx = 0;
@@ -2321,32 +2340,29 @@ const beginYellowReflect = (ai) => {
   return true;
 };
 
-const beginOrangeOrb = (ai) => {
-  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging) return false;
+const beginOrangeCooldownBoost = (ai) => {
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging || ai.cooldownBoostTimer > 0) return false;
 
-  projectiles.current.push({
-    x: ai.x + (ai.facing > 0 ? ai.width : 0),
-    y: ai.y + 25,
-    vx: ai.facing * 2.2,
-    owner: ai,
-    team: ai.team,
-    type: "orangeorb",
-    attackHeight: "mid",
-    color: "#fb923c",
-    radius: 12,
-  });
-  playSfx("orange_orb");
-
+  stopDefense(ai);
+  ai.vx = 0;
+  ai.attacking = false;
+  ai.attackTimer = 0;
+  ai.attackType = "";
+  ai.attackHeight = "";
+  ai.orangeCharging = true;
+  ai.orangeChargeTimer = 0;
   ai.canSpecial2 = false;
+
+  playSfx("charge_start");
   setManagedTimeout(() => {
     ai.canSpecial2 = true;
-  }, 9000);
+  }, 13000);
 
   return true;
 };
 
 const beginPoisonHeal = (ai) => {
-  if (!ai.canSpecial2 || ai.specialDisabled || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.health >= 100) return false;
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging || ai.health >= 100) return false;
 
   stopDefense(ai);
   ai.vx = 0;
@@ -2367,7 +2383,7 @@ const beginPoisonHeal = (ai) => {
 };
 
 const beginVoidCharge = (ai) => {
-  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging) return false;
+  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging) return false;
 
   stopDefense(ai);
   ai.charging = true;
@@ -2577,7 +2593,7 @@ const updateAI = (ai) => {
     ai.x < 55 ||
     ai.x + ai.width > WORLD_W - 55;
 
-  if (ai.spearLocked || ai.reflecting || ai.purpleCharging) {
+  if (ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging) {
     stopDefense(ai);
     ai.vx = 0;
     return;
@@ -2596,6 +2612,8 @@ const updateAI = (ai) => {
     ai.chargeFrames = 0;
     ai.purpleCharging = false;
     ai.purpleChargeTimer = 0;
+    ai.orangeCharging = false;
+    ai.orangeChargeTimer = 0;
     ai.reflecting = false;
     ai.reflectTimer = 0;
     ai.spearLocked = false;
@@ -2774,9 +2792,9 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
     abs > 100 &&
     abs < 430 &&
     rand() < aiSettings.specialChance &&
-    (targetVulnerable || opp.specialDisabled === false || abs > 190)
+    (targetVulnerable || ai.cooldownBoostTimer <= 0 || abs > 190)
   ) {
-    if (beginOrangeOrb(ai)) return;
+    if (beginOrangeCooldownBoost(ai)) return;
   }
 
   if (
@@ -3109,7 +3127,10 @@ if (hpW > 0) {
         p.chargeFrames = 0;
         p.purpleCharging = false;
         p.purpleChargeTimer = 0;
+        p.orangeCharging = false;
+        p.orangeChargeTimer = 0;
         p.speedBoostTimer = 0;
+        p.cooldownBoostTimer = 0;
         p.damageAmpTimer = 0;
         p.spearLocked = false;
         p.spearStunned = false;
@@ -3172,7 +3193,10 @@ if (hpW > 0) {
         p.chargeFrames = 0;
         p.purpleCharging = false;
         p.purpleChargeTimer = 0;
+        p.orangeCharging = false;
+        p.orangeChargeTimer = 0;
         p.speedBoostTimer = 0;
+        p.cooldownBoostTimer = 0;
         p.damageAmpTimer = 0;
         p.spearLocked = false;
         p.spearStunned = false;
@@ -3218,7 +3242,7 @@ if (hpW > 0) {
         }
       };
 
-      if (p.spearLocked || p.reflecting || p.purpleCharging) {
+      if (p.spearLocked || p.reflecting || p.purpleCharging || p.orangeCharging) {
         p.vx = 0;
         p.blocking = false;
         p.ducking = false;
@@ -3311,7 +3335,7 @@ if (hpW > 0) {
             p.attackType = "uppercut";
             p.attackHeight = "high";
             p.attackTimer = 15;
-            p.upperCooldown = 60;
+            p.upperCooldown = meleeCooldown(p, 60);
             playSfx("uppercut");
             clearHeld("punch");
           } else if (!p.ducking && p.punchCooldown === 0) {
@@ -3319,7 +3343,7 @@ if (hpW > 0) {
             p.attackType = "punch";
             p.attackHeight = "mid";
             p.attackTimer = 15;
-            p.punchCooldown = 20;
+            p.punchCooldown = meleeCooldown(p, 20);
             playSfx("punch");
             clearHeld("punch");
           }
@@ -3331,7 +3355,7 @@ if (hpW > 0) {
             p.attackType = "sweep";
             p.attackHeight = "low";
             p.attackTimer = 15;
-            p.sweepCooldown = 50;
+            p.sweepCooldown = meleeCooldown(p, 50);
             playSfx("sweep");
             clearHeld("kick");
           } else if (!p.ducking && p.kickCooldown === 0) {
@@ -3339,7 +3363,7 @@ if (hpW > 0) {
             p.attackType = "kick";
             p.attackHeight = "overhead";
             p.attackTimer = 15;
-            p.kickCooldown = 40;
+            p.kickCooldown = meleeCooldown(p, 40);
             playSfx("kick");
             clearHeld("kick");
           }
@@ -3439,11 +3463,19 @@ if (hpW > 0) {
               p.canSpecial2 = false;
               setManagedTimeout(() => (p.canSpecial2 = true), 3000);
               clearHeld("special2");
-            } else if (p.type === "explosion") {
-              projectiles.current.push({ x: p.x + (p.facing > 0 ? p.width : 0), y: p.y + 25, vx: p.facing * 2.2, owner: p, team: p.team, type: "orangeorb", attackHeight: "mid", color: "#fb923c", radius: 12 });
-              playSfx("orange_orb");
+            } else if (p.type === "explosion" && p.cooldownBoostTimer <= 0) {
+              p.vx = 0;
+              p.blocking = false;
+              p.ducking = false;
+              p.attacking = false;
+              p.attackTimer = 0;
+              p.attackType = "";
+              p.attackHeight = "";
+              p.orangeCharging = true;
+              p.orangeChargeTimer = 0;
+              playSfx("charge_start");
               p.canSpecial2 = false;
-              setManagedTimeout(() => (p.canSpecial2 = true), 10000);
+              setManagedTimeout(() => (p.canSpecial2 = true), 13000);
               clearHeld("special2");
             } else if (p.type === "light") {
               const target = getNearestEnemy(p);
@@ -3538,6 +3570,25 @@ if (hpW > 0) {
           playSfx("purple_boost");
         }
       }
+
+      if (p.orangeCharging) {
+        p.orangeChargeTimer++;
+        p.vx = 0;
+        p.blocking = false;
+        p.ducking = false;
+        p.attacking = false;
+        p.attackTimer = 0;
+        p.attackType = "";
+        p.attackHeight = "";
+        if (p.orangeChargeTimer >= 60) {
+          p.orangeCharging = false;
+          p.orangeChargeTimer = 0;
+          p.cooldownBoostTimer = 480;
+          playSfx("orange_orb");
+        }
+      }
+
+      if (p.cooldownBoostTimer > 0) p.cooldownBoostTimer--;
 
       if (p.speedBoostTimer > 0) {
         p.speedBoostTimer--;
@@ -3909,9 +3960,24 @@ if (p.aiBlockHoldTimer > 0) {
         ctx.globalAlpha = 1;
       }
 
+      if (p.orangeCharging) {
+        ctx.globalAlpha = 0.62;
+        ctx.fillStyle = "#fb923c";
+        const chargeSize = Math.min(p.orangeChargeTimer / 3, 20);
+        ctx.fillRect(p.x - chargeSize / 2, drawY - chargeSize / 2, p.width + chargeSize, drawHeight + chargeSize);
+        ctx.globalAlpha = 1;
+      }
+
       if (p.speedBoostTimer > 0) {
         ctx.globalAlpha = 0.35;
         ctx.fillStyle = "#e879f9";
+        ctx.fillRect(p.x - 10, drawY - 10, p.width + 20, drawHeight + 20);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.cooldownBoostTimer > 0) {
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = "#fdba74";
         ctx.fillRect(p.x - 10, drawY - 10, p.width + 20, drawHeight + 20);
         ctx.globalAlpha = 1;
       }
