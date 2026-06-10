@@ -133,54 +133,18 @@ async function forfeitMatch(matchId, leavingSocketId) {
 
   const leavingIsP1 = match.p1.socketId === leavingSocketId;
   const winner = leavingIsP1 ? match.p2 : match.p1;
-  const loser = leavingIsP1 ? match.p1 : match.p2;
   const p1Rounds = leavingIsP1 ? 0 : 2;
   const p2Rounds = leavingIsP1 ? 2 : 0;
 
   try {
-    const eloChange = calculateEloChange(2, 0);
-    await pool.query(
-      'UPDATE users SET wins = wins + 1, elo = CASE WHEN (elo + $1) < 0 THEN 0 ELSE (elo + $1) END WHERE id = $2',
-      [eloChange, winner.userId]
-    );
-    await pool.query(
-      'UPDATE users SET losses = losses + 1, elo = CASE WHEN (elo + $1) < 0 THEN 0 ELSE (elo + $1) END WHERE id = $2',
-      [-eloChange, loser.userId]
-    );
-    await pool.query(
-      'INSERT INTO matches (player1_id, player2_id, winner_id, p1_rounds, p2_rounds, elo_change) VALUES ($1,$2,$3,$4,$5,$6)',
-      [match.p1.userId, match.p2.userId, winner.userId, p1Rounds, p2Rounds, eloChange]
-    );
-
-    const p1Data = await pool.query('SELECT elo, wins, losses FROM users WHERE id = $1', [match.p1.userId]);
-    const p2Data = await pool.query('SELECT elo, wins, losses FROM users WHERE id = $1', [match.p2.userId]);
-    const p1Record = p1Data.rows?.[0] || {};
-    const p2Record = p2Data.rows?.[0] || {};
-
-    io.to(match.p1.socketId).emit('match:result', {
-      winner: !leavingIsP1,
-      reason: 'forfeit',
-      newElo: p1Record.elo,
-      wins: p1Record.wins,
-      losses: p1Record.losses,
-      eloChange: leavingIsP1 ? -eloChange : eloChange,
-    });
-
-    io.to(match.p2.socketId).emit('match:result', {
-      winner: leavingIsP1,
-      reason: 'forfeit',
-      newElo: p2Record.elo,
-      wins: p2Record.wins,
-      losses: p2Record.losses,
-      eloChange: leavingIsP1 ? eloChange : -eloChange,
-    });
+    await processMatchResult(matchId, p1Rounds, p2Rounds, winner.userId);
   } catch (err) {
     console.error('match forfeit db err', err);
+    return false;
   }
 
   io.to(match.p1.socketId).emit('match:ended', { winner: winner.userId });
   io.to(match.p2.socketId).emit('match:ended', { winner: winner.userId });
-  activeMatches.delete(matchId);
   return true;
 }
 
@@ -234,21 +198,21 @@ async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId) {
 
       if (isP1Winner) {
         await pool.query(
-          'UPDATE users SET wins = wins + 1, elo = CASE WHEN (elo + $1) < 0 THEN 0 ELSE (elo + $1) END WHERE id = $2',
-          [eloChange, match.p1.userId]
+          'UPDATE users SET wins = wins + 1 WHERE id = $1',
+          [match.p1.userId]
         );
         await pool.query(
-          'UPDATE users SET losses = losses + 1, elo = CASE WHEN (elo - $1) < 0 THEN 0 ELSE (elo - $1) END WHERE id = $2',
-          [eloChange, match.p2.userId]
+          'UPDATE users SET losses = losses + 1 WHERE id = $1',
+          [match.p2.userId]
         );
       } else {
         await pool.query(
-          'UPDATE users SET losses = losses + 1, elo = CASE WHEN (elo - $1) < 0 THEN 0 ELSE (elo - $1) END WHERE id = $2',
-          [eloChange, match.p1.userId]
+          'UPDATE users SET losses = losses + 1 WHERE id = $1',
+          [match.p1.userId]
         );
         await pool.query(
-          'UPDATE users SET wins = wins + 1, elo = CASE WHEN (elo + $1) < 0 THEN 0 ELSE (elo + $1) END WHERE id = $2',
-          [eloChange, match.p2.userId]
+          'UPDATE users SET wins = wins + 1 WHERE id = $1',
+          [match.p2.userId]
         );
       }
 
@@ -277,6 +241,17 @@ async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId) {
       wins: p2Record.wins,
       losses: p2Record.losses,
       eloChange: winnerId ? (isP1Winner ? -eloChange : eloChange) : 0,
+    });
+
+    console.log('Match result recorded:', {
+      matchId,
+      p1UserId: match.p1.userId,
+      p2UserId: match.p2.userId,
+      p1Rounds,
+      p2Rounds,
+      winnerId,
+      p1Record,
+      p2Record,
     });
 
     activeMatches.delete(matchId);
