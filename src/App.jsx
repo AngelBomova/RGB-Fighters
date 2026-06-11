@@ -861,7 +861,9 @@ const toggleFullscreen = async () => {
   const randPick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const randStage = () => randPick(["default", "recursion", "sky", "hourglass", "bottom"]);
   const FIGHTER_COLORS = ["red", "blue", "green", "black", "white", "purple", "yellow", "orange"];
+  const RAINBOW_COLORS = ["#ef4444", "#f97316", "#facc15", "#22c55e", "#3b82f6", "#a855f7", "#f8fafc"];
   const randColor = () => randPick(FIGHTER_COLORS);
+  const isRainbowUser = (name) => String(name || "") === "Rainbow";
   const fighterNote = (c) =>
     c === "red"
       ? "Fire & Dash"
@@ -877,6 +879,8 @@ const toggleFullscreen = async () => {
       ? "Double Damage & Boost"
       : c === "yellow"
       ? "Spear & Reflect"
+      : c === "rainbow"
+      ? "Turret & Summon"
       : "Triple Fire & Speed Charge";
   const shuffle = (arr) => {
     const a = [...arr];
@@ -967,7 +971,7 @@ const toggleFullscreen = async () => {
       const idx = ladderIndex;
       const isLast = idx === FIGHTER_COLORS.length - 1;
 
-      const oppColor = isLast ? p1Color : ladderOppOrder[idx];
+      const oppColor = isLast ? "rainbow" : ladderOppOrder[idx];
       const diffByStep = idx <= 0 ? "easy" : idx <= 3 ? "medium" : "hard";
 
       return {
@@ -975,7 +979,7 @@ const toggleFullscreen = async () => {
         ladder: true,
         humans: [{ slot: "p1", team: 1, color: p1Color }],
         ai: [{ slot: "ai1", team: 2, color: oppColor, dummy: false }],
-        difficulty: difficulty || diffByStep,
+        difficulty: isLast ? "hard" : difficulty || diffByStep,
         stage: randStage(),
         ladderIndex: idx,
       };
@@ -1126,6 +1130,7 @@ const toggleFullscreen = async () => {
         lightColor: p.lightColor,
         alive: p.alive,
         health: p.health,
+        maxHealth: p.maxHealth,
         grounded: p.grounded,
         attacking: p.attacking,
         attackTimer: p.attackTimer,
@@ -1157,6 +1162,10 @@ const toggleFullscreen = async () => {
         purpleChargeTimer: p.purpleChargeTimer,
         orangeCharging: p.orangeCharging,
         orangeChargeTimer: p.orangeChargeTimer,
+        rainbowTurretTimer: p.rainbowTurretTimer,
+        rainbowTurretShotTimer: p.rainbowTurretShotTimer,
+        rainbowSummonId: p.rainbowSummonId,
+        isSummon: p.isSummon,
         speedBoostTimer: p.speedBoostTimer,
         cooldownBoostTimer: p.cooldownBoostTimer,
         damageAmpTimer: p.damageAmpTimer,
@@ -1187,6 +1196,9 @@ const toggleFullscreen = async () => {
         color: proj.color,
         radius: proj.radius,
         knockbackDir: proj.knockbackDir,
+        damage: proj.damage,
+        homing: proj.homing,
+        speed: proj.speed,
       })),
     };
   };
@@ -1227,8 +1239,16 @@ const toggleFullscreen = async () => {
 
     const fighters = fightersRef.current || [];
     for (const data of snapshot.fighters || []) {
-      const fighter = fighters.find((p) => p.id === data.id);
-      if (!fighter) continue;
+      let fighter = fighters.find((p) => p.id === data.id);
+      if (!fighter) {
+        fighter = {
+          ...data,
+          bindsRef: null,
+          hitbox: data.hitbox || { x: 0, y: 0, width: 0, height: 0 },
+          hurtbox: data.hurtbox || { x: 0, y: 0, width: 40, height: 60 },
+        };
+        fighters.push(fighter);
+      }
       Object.assign(fighter, data);
       fighter.hitbox = data.hitbox || fighter.hitbox || { x: 0, y: 0, width: 0, height: 0 };
       fighter.hurtbox = data.hurtbox || fighter.hurtbox || { x: 0, y: 0, width: 40, height: 60 };
@@ -1489,6 +1509,8 @@ const toggleFullscreen = async () => {
             return { hex: "#facc15", name: "Yellow", type: "electric" };
           case "orange":
             return { hex: "#f97316", name: "Orange", type: "explosion" };
+          case "rainbow":
+            return { hex: "#ec4899", name: "Rainbow", type: "rainbow" };
           default:
             return { hex: "#ef4444", name: "Red", type: "fire" };
         }
@@ -1552,6 +1574,7 @@ const toggleFullscreen = async () => {
 };
 
 const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
+const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficulty] || aiSettings : aiSettings;
 
     const selectedStage = gameConfig.stage || "default";
 
@@ -1622,7 +1645,8 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
         height: 60,
         vx: 0,
         vy: 0,
-        health: 100,
+        maxHealth: opts.maxHealth || (data.type === "rainbow" ? 150 : 100),
+        health: opts.health || (data.type === "rainbow" ? 150 : 100),
         color: data.hex,
         lightColor: data.light,
         name: data.name,
@@ -1661,6 +1685,10 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
         purpleChargeTimer: 0,
         orangeCharging: false,
         orangeChargeTimer: 0,
+        rainbowTurretTimer: 0,
+        rainbowTurretShotTimer: 0,
+        rainbowSummonId: null,
+        isSummon: !!opts.isSummon,
         speedBoostTimer: 0,
         cooldownBoostTimer: 0,
         damageAmpTimer: 0,
@@ -1761,7 +1789,14 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
     spawn();
     fightersRef.current = fighters;
 
+    const removeSummons = () => {
+      for (let i = fighters.length - 1; i >= 0; i--) {
+        if (fighters[i].isSummon) fighters.splice(i, 1);
+      }
+    };
+
     const resetPositions = () => {
+      removeSummons();
       if (!is2v2) {
         const f1 = fighters.find((f) => f.team === 1);
         const f2 = fighters.find((f) => f.team === 2);
@@ -1792,7 +1827,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
       for (const p of fighters) {
         if (p.team === 2 && p.dummy) {
           p.alive = true;
-          p.health = 100;
+          p.health = p.maxHealth || 100;
 
           p.frozen = false;
           p.frozenTimer = 0;
@@ -1835,6 +1870,9 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
           p.purpleChargeTimer = 0;
           p.orangeCharging = false;
           p.orangeChargeTimer = 0;
+          p.rainbowTurretTimer = 0;
+          p.rainbowTurretShotTimer = 0;
+          p.rainbowSummonId = null;
           p.speedBoostTimer = 0;
           p.cooldownBoostTimer = 0;
           p.damageAmpTimer = 0;
@@ -1973,6 +2011,7 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
 
     const applyDamage = (attacker, defender, attackType, extra = {}) => {
       if (!defender.alive) return 0;
+      if (defender.type === "rainbow" && defender.rainbowTurretTimer > 0) return 0;
       if (attackType === "iceball" && defender.frozen) return 0;
 
       breakSpearStunIfNeeded(defender);
@@ -2040,6 +2079,11 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
           hitstunFrames = 14;
           slowFrames = 480;
           break;
+        case "rainbowball":
+          damage = 3;
+          knockback = 4;
+          hitstunFrames = 8;
+          break;
         case "yellowspear":
           damage = 2;
           knockback = 0;
@@ -2088,6 +2132,10 @@ const aiSettings = difficultySettings[gameConfig.difficulty || "easy"];
           break;
         default:
           break;
+      }
+
+      if (attacker?.type === "rainbow" && ["punch", "kick", "uppercut", "sweep"].includes(attackType)) {
+        damage *= 2;
       }
 
       if (defender.damageAmpTimer > 0) {
@@ -2246,6 +2294,89 @@ const meleeCooldown = (fighter, baseCooldown) => (
   fighter.cooldownBoostTimer > 0 ? Math.ceil(baseCooldown * 0.5) : baseCooldown
 );
 
+const rainbowShotColor = () => RAINBOW_COLORS[Math.floor(Date.now() / 80) % RAINBOW_COLORS.length];
+
+const fireRainbowShot = (owner) => {
+  const target = getNearestEnemy(owner);
+  if (!target) return;
+  const startX = owner.x + owner.width / 2;
+  const startY = owner.y + owner.height / 2;
+  const targetX = target.x + target.width / 2;
+  const targetY = target.y + target.height / 2;
+  const dx = targetX - startX;
+  const dy = targetY - startY;
+  const distance = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+  const speed = 12;
+
+  projectiles.current.push({
+    x: startX,
+    y: startY,
+    vx: (dx / distance) * speed,
+    vy: (dy / distance) * speed,
+    owner,
+    team: owner.team,
+    type: "rainbowball",
+    attackHeight: "high",
+    color: rainbowShotColor(),
+    radius: 7,
+    damage: 3,
+    homing: true,
+    speed,
+  });
+};
+
+const beginRainbowTurret = (fighter) => {
+  if (!fighter.canProjectile || fighter.specialDisabled || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.rainbowTurretTimer > 0) return false;
+
+  stopDefense(fighter);
+  fighter.rainbowTurretTimer = 180;
+  fighter.rainbowTurretShotTimer = 0;
+  fighter.canProjectile = false;
+  fireRainbowShot(fighter);
+  playSfx("fireball");
+
+  setManagedTimeout(() => {
+    fighter.canProjectile = true;
+  }, 10000);
+
+  return true;
+};
+
+const getActiveRainbowSummon = (owner) => fighters.find((p) => p.isSummon && p.team === owner.team && p.alive);
+
+const beginRainbowSummon = (fighter) => {
+  if (!fighter.canSpecial2 || fighter.specialDisabled || fighter.frozen || fighter.hitstun || fighter.spearStunned || getActiveRainbowSummon(fighter)) return false;
+
+  const color = randColor();
+  const data = getColorData(color, "normal");
+  const x = Math.max(30, Math.min(WORLD_W - 70, fighter.x + (fighter.facing > 0 ? fighter.width + 24 : -64)));
+  const summon = makeFighter({
+    id: `rainbow_summon_${Date.now()}`,
+    team: fighter.team,
+    isHuman: false,
+    bindsRef: null,
+    data,
+    x,
+    y: groundLevel - 60,
+    facing: fighter.facing,
+    label: "Summon",
+    health: 15,
+    maxHealth: 15,
+    isSummon: true,
+  });
+  summon.aiDifficulty = "medium";
+  fighters.push(summon);
+  fighter.rainbowSummonId = summon.id;
+  fighter.canSpecial2 = false;
+  playSfx("purple_boost");
+
+  setManagedTimeout(() => {
+    fighter.canSpecial2 = true;
+  }, 20000);
+
+  return true;
+};
+
   const beginMelee = (ai, attackType) => {
     if (ai.attacking || ai.hitstun || ai.frozen) return false;
 
@@ -2298,6 +2429,7 @@ const meleeCooldown = (fighter, baseCooldown) => (
 };
 
 const beginProjectile = (ai) => {
+  if (ai.type === "rainbow") return beginRainbowTurret(ai);
   if (!ai.canProjectile || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging) return false;
 
   const projX = ai.x + (ai.facing > 0 ? ai.width : 0);
@@ -2636,14 +2768,14 @@ const getIncomingProjectile = (ai) => {
     const horizontalThreat =
       ((proj.vx > 0 && proj.x < aiCenter) ||
         (proj.vx < 0 && proj.x > aiCenter)) &&
-      xDist < aiSettings.projectileReactRange &&
+      xDist < getAiSettings(ai).projectileReactRange &&
       yDist < 70;
 
     const verticalThreat =
       (proj.vy || 0) > 0 &&
       proj.y < centerY(ai) &&
       xDist < 55 &&
-      yDist < aiSettings.projectileReactRange;
+      yDist < getAiSettings(ai).projectileReactRange;
 
     return horizontalThreat || verticalThreat;
   });
@@ -2826,13 +2958,13 @@ const updateAI = (ai) => {
     faceTarget(ai, opp);
 
     const shouldRelease =
-      ai.chargeFrames >= aiSettings.chargeMinFrames &&
+      ai.chargeFrames >= getAiSettings(ai).chargeMinFrames &&
       sameLane &&
       abs < 560 &&
       (targetVulnerable || abs < 260 || opp.blocking);
 
     const mustRelease =
-      ai.chargeFrames >= aiSettings.chargeMaxFrames ||
+      ai.chargeFrames >= getAiSettings(ai).chargeMaxFrames ||
       abs < 115;
 
     if (shouldRelease || mustRelease) {
@@ -2850,7 +2982,7 @@ const updateAI = (ai) => {
   if (ai.healing) {
     const safeToKeepHealing =
       ai.health < 100 &&
-      abs > aiSettings.healSafeDistance &&
+      abs > getAiSettings(ai).healSafeDistance &&
       !getIncomingProjectile(ai);
 
     if (!safeToKeepHealing) {
@@ -2871,7 +3003,7 @@ const updateAI = (ai) => {
   stopDefense(ai);
 
   const incoming = getIncomingProjectile(ai);
-  if (incoming && ai.type === "electric" && ai.canSpecial2 && !ai.specialDisabled && rand() < aiSettings.projectileBlockChance + 0.2) {
+  if (incoming && ai.type === "electric" && ai.canSpecial2 && !ai.specialDisabled && rand() < getAiSettings(ai).projectileBlockChance + 0.2) {
     if (beginYellowReflect(ai)) return;
   }
 
@@ -2886,9 +3018,9 @@ const updateAI = (ai) => {
     return;
   }
 }
-  if (incoming && rand() < aiSettings.projectileBlockChance) {
+  if (incoming && rand() < getAiSettings(ai).projectileBlockChance) {
     if (incoming.type === "poisonorb") {
-      if (!ai.ducking && ai.grounded && !ai.jumpDisabled && rand() < aiSettings.jumpChance) {
+      if (!ai.ducking && ai.grounded && !ai.jumpDisabled && rand() < getAiSettings(ai).jumpChance) {
         ai.vy = ai.jumpPower;
         ai.grounded = false;
       }
@@ -2900,20 +3032,20 @@ const updateAI = (ai) => {
     return;
   }
 
-  if (opp.attacking && abs < 135 && rand() < aiSettings.blockChance) {
+  if (opp.attacking && abs < 135 && rand() < getAiSettings(ai).blockChance) {
   const h = opp.attackHeight || "mid";
   smartBlock(ai, h === "low" ? "low" : "mid");
   return;
 }
 
-if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
+if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
   smartBlock(ai, "low");
   return;
 }
 
   ai.aiTimer++;
-  if (ai.aiTimer < aiSettings.reactionTime) {
-    if (abs > aiSettings.spacing + 40) moveToward(ai, opp, 0.75);
+  if (ai.aiTimer < getAiSettings(ai).reactionTime) {
+    if (abs > getAiSettings(ai).spacing + 40) moveToward(ai, opp, 0.75);
     else if (abs < 55) moveAway(ai, opp, 0.65);
     else ai.vx *= 0.75;
 
@@ -2921,8 +3053,8 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
   }
   ai.aiTimer = 0;
 
-  if (rand() < aiSettings.mistakeChance) {
-    if (abs > aiSettings.spacing) moveToward(ai, opp, 0.7);
+  if (rand() < getAiSettings(ai).mistakeChance) {
+    if (abs > getAiSettings(ai).spacing) moveToward(ai, opp, 0.7);
     else if (abs < 70) moveAway(ai, opp, 0.55);
     else ai.vx = 0;
     return;
@@ -2941,10 +3073,29 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
   if (
   centerY(opp) < centerY(ai) - 65 &&
   abs < 280 &&
-  rand() < aiSettings.jumpChance + 0.3
+  rand() < getAiSettings(ai).jumpChance + 0.3
 ) {
   if (tryJumpToPlatform(ai, opp)) return;
 }
+
+  if (
+    ai.type === "rainbow" &&
+    ai.canProjectile &&
+    !ai.specialDisabled &&
+    rand() < getAiSettings(ai).specialChance
+  ) {
+    if (beginRainbowTurret(ai)) return;
+  }
+
+  if (
+    ai.type === "rainbow" &&
+    ai.canSpecial2 &&
+    !ai.specialDisabled &&
+    !getActiveRainbowSummon(ai) &&
+    rand() < getAiSettings(ai).specialChance
+  ) {
+    if (beginRainbowSummon(ai)) return;
+  }
 
   if (
     ai.type === "psychic" &&
@@ -2953,7 +3104,7 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
     ai.speedBoostTimer <= 0 &&
     abs > 160 &&
     !incoming &&
-    rand() < aiSettings.specialChance
+    rand() < getAiSettings(ai).specialChance
   ) {
     if (beginPurplePowerUp(ai)) return;
   }
@@ -2965,7 +3116,7 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
     sameLane &&
     abs > 120 &&
     abs < 440 &&
-    rand() < aiSettings.specialChance &&
+    rand() < getAiSettings(ai).specialChance &&
     (targetVulnerable || opp.damageAmpTimer <= 0 || abs > 220)
   ) {
     if (beginProjectile(ai)) return;
@@ -2978,7 +3129,7 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
     sameLane &&
     abs > 140 &&
     abs < 520 &&
-    rand() < aiSettings.specialChance &&
+    rand() < getAiSettings(ai).specialChance &&
     (targetVulnerable || !opp.grounded || abs > 230)
   ) {
     if (beginProjectile(ai)) return;
@@ -2991,7 +3142,7 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
     sameLane &&
     abs > 100 &&
     abs < 430 &&
-    rand() < aiSettings.specialChance &&
+    rand() < getAiSettings(ai).specialChance &&
     (targetVulnerable || ai.cooldownBoostTimer <= 0 || abs > 190)
   ) {
     if (beginOrangeCooldownBoost(ai)) return;
@@ -3004,7 +3155,7 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
     sameLane &&
     abs > 115 &&
     abs < 430 &&
-    rand() < aiSettings.specialChance
+    rand() < getAiSettings(ai).specialChance
   ) {
     if (beginProjectile(ai)) return;
   }
@@ -3014,7 +3165,7 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
     ai.canSpecial2 &&
     !ai.specialDisabled &&
     abs < 560 &&
-    rand() < aiSettings.specialChance &&
+    rand() < getAiSettings(ai).specialChance &&
     (targetVulnerable || opp.blocking || abs < 250 || !opp.grounded)
   ) {
     if (beginWhiteDrop(ai, opp)) return;
@@ -3027,7 +3178,7 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
     sameLane &&
     abs > 90 &&
     abs < 430 &&
-    rand() < aiSettings.specialChance &&
+    rand() < getAiSettings(ai).specialChance &&
     (targetVulnerable || (opp.blocking && !opp.ducking) || abs > 190)
   ) {
     if (beginProjectile(ai)) return;
@@ -3035,10 +3186,10 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
 
   if (
     ai.type === "poison" &&
-    ai.health <= aiSettings.healHealth &&
-    abs > aiSettings.healSafeDistance &&
+    ai.health <= getAiSettings(ai).healHealth &&
+    abs > getAiSettings(ai).healSafeDistance &&
     !incoming &&
-    rand() < aiSettings.specialChance
+    rand() < getAiSettings(ai).specialChance
   ) {
     if (beginPoisonHeal(ai)) return;
   }
@@ -3050,7 +3201,7 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
     sameLane &&
     abs > 145 &&
     abs < 520 &&
-    rand() < aiSettings.specialChance &&
+    rand() < getAiSettings(ai).specialChance &&
     (targetVulnerable || opp.blocking || abs > 260)
   ) {
     if (beginVoidCharge(ai)) return;
@@ -3063,7 +3214,7 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
     sameLane &&
     abs > 100 &&
     abs < 430 &&
-    rand() < aiSettings.specialChance &&
+    rand() < getAiSettings(ai).specialChance &&
     (targetVulnerable || opp.blocking || abs > 190)
   ) {
     if (beginIceSlowOrb(ai)) return;
@@ -3075,7 +3226,7 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
     !ai.specialDisabled &&
     abs > 95 &&
     abs < 310 &&
-    rand() < aiSettings.specialChance &&
+    rand() < getAiSettings(ai).specialChance &&
     (targetVulnerable || aiCornered || abs > 180)
   ) {
     if (beginRedDash(ai)) return;
@@ -3088,7 +3239,7 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
     abs < 290
   ) {
     moveToward(ai, opp, 1.25);
-    if (abs < aiSettings.meleeRange) chooseCloseAttack(ai, opp);
+    if (abs < getAiSettings(ai).meleeRange) chooseCloseAttack(ai, opp);
     return;
   }
 
@@ -3096,13 +3247,13 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
     ai.canProjectile &&
     !ai.specialDisabled &&
     sameLane &&
-    abs > aiSettings.projectileRange &&
-    rand() < aiSettings.specialChance
+    abs > getAiSettings(ai).projectileRange &&
+    rand() < getAiSettings(ai).specialChance
   ) {
     if (beginProjectile(ai)) return;
   }
 
-  if (abs <= aiSettings.meleeRange) {
+  if (abs <= getAiSettings(ai).meleeRange) {
     chooseCloseAttack(ai, opp);
     return;
   }
@@ -3117,7 +3268,7 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
     !ai.jumpDisabled &&
     abs > 115 &&
     abs < 260 &&
-    rand() < aiSettings.jumpChance
+    rand() < getAiSettings(ai).jumpChance
   ) {
     ai.vy = ai.jumpPower;
     ai.grounded = false;
@@ -3125,20 +3276,20 @@ if (opp.ducking && abs < 115 && rand() < aiSettings.blockChance * 0.75) {
     return;
   }
 
-  if (abs > aiSettings.spacing) {
-    moveToward(ai, opp, aiSettings.aggression);
+  if (abs > getAiSettings(ai).spacing) {
+    moveToward(ai, opp, getAiSettings(ai).aggression);
   } else if (abs < 58) {
     moveAway(ai, opp, 0.85);
   } else {
     ai.vx *= 0.72;
 
-    if (rand() < aiSettings.blockChance * 0.18) {
+    if (rand() < getAiSettings(ai).blockChance * 0.18) {
       smartBlock(ai, "mid");
     }
   }
 };
 
-    const drawHealthBarSmall = (label, health, x, y, color, roundsWon, alignRight = false) => {
+    const drawHealthBarSmall = (label, health, x, y, color, roundsWon, alignRight = false, maxHealth = 100) => {
       const barW = 190;
       const barH = 16;
       const boxH = 60;
@@ -3161,8 +3312,16 @@ ctx.strokeStyle = "#000000";
 ctx.lineWidth = 2;
 ctx.strokeRect(x + 10, y + 24, barW - 20, barH);
 
-const hpW = ((Math.max(0, Math.min(100, health)) / 100) * (barW - 20)) | 0;
-ctx.fillStyle = color;
+const hpW = ((Math.max(0, Math.min(maxHealth, health)) / maxHealth) * (barW - 20)) | 0;
+if (color === "rainbow") {
+  const barGradient = ctx.createLinearGradient(x + 10, y + 24, x + barW - 10, y + 24);
+  RAINBOW_COLORS.forEach((rainbowColor, index) => {
+    barGradient.addColorStop(index / (RAINBOW_COLORS.length - 1), rainbowColor);
+  });
+  ctx.fillStyle = barGradient;
+} else {
+  ctx.fillStyle = color;
+}
 ctx.fillRect(x + 10, y + 24, hpW, barH);
 
 if (hpW > 0) {
@@ -3242,7 +3401,7 @@ if (hpW > 0) {
       ctx.restore();
     };
 
-    const aliveOnTeam = (team) => fighters.filter((f) => f.alive && f.team === team);
+    const aliveOnTeam = (team) => fighters.filter((f) => f.alive && f.team === team && !f.isSummon);
     const teamTotalHP = (team) => aliveOnTeam(team).reduce((sum, f) => sum + Math.max(0, f.health), 0);
 
     const markKOIfNeeded = (p) => {
@@ -3287,7 +3446,7 @@ if (hpW > 0) {
     const tieRedoRound = () => {
       for (const p of fighters) {
         p.alive = true;
-        p.health = 100;
+        p.health = p.maxHealth || 100;
 
         p.frozen = false;
         p.frozenTimer = 0;
@@ -3329,6 +3488,9 @@ if (hpW > 0) {
         p.purpleChargeTimer = 0;
         p.orangeCharging = false;
         p.orangeChargeTimer = 0;
+        p.rainbowTurretTimer = 0;
+        p.rainbowTurretShotTimer = 0;
+        p.rainbowSummonId = null;
         p.speedBoostTimer = 0;
         p.cooldownBoostTimer = 0;
         p.damageAmpTimer = 0;
@@ -3353,7 +3515,7 @@ if (hpW > 0) {
     const nextRoundReset = () => {
       for (const p of fighters) {
         p.alive = true;
-        p.health = 100;
+        p.health = p.maxHealth || 100;
 
         p.frozen = false;
         p.frozenTimer = 0;
@@ -3395,6 +3557,9 @@ if (hpW > 0) {
         p.purpleChargeTimer = 0;
         p.orangeCharging = false;
         p.orangeChargeTimer = 0;
+        p.rainbowTurretTimer = 0;
+        p.rainbowTurretShotTimer = 0;
+        p.rainbowSummonId = null;
         p.speedBoostTimer = 0;
         p.cooldownBoostTimer = 0;
         p.damageAmpTimer = 0;
@@ -3591,6 +3756,10 @@ if (hpW > 0) {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 8, owner: p, team: p.team, type: "fireball", attackHeight: "high", color: p.color, radius: 8 });
             playSfx("fireball");
             cooldown = 500;
+          } else if (p.type === "rainbow") {
+            beginRainbowTurret(p);
+            clearHeld("special1");
+            return;
           } else if (p.type === "psychic") {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 8, owner: p, team: p.team, type: "purpleball", attackHeight: "high", color: "#a855f7", radius: 8 });
             playSfx("purple_damage");
@@ -3685,6 +3854,8 @@ if (hpW > 0) {
               p.canSpecial2 = false;
               setManagedTimeout(() => (p.canSpecial2 = true), 13000);
               clearHeld("special2");
+            } else if (p.type === "rainbow") {
+              if (beginRainbowSummon(p)) clearHeld("special2");
             } else if (p.type === "light") {
               const target = getNearestEnemy(p);
               if (target) {
@@ -3796,6 +3967,19 @@ if (hpW > 0) {
         }
       }
 
+      if (p.rainbowTurretTimer > 0) {
+        p.rainbowTurretTimer--;
+        p.rainbowTurretShotTimer--;
+        if (p.rainbowTurretShotTimer <= 0) {
+          fireRainbowShot(p);
+          p.rainbowTurretShotTimer = 12;
+        }
+        if (p.rainbowTurretTimer <= 0) {
+          p.rainbowTurretTimer = 0;
+          p.rainbowTurretShotTimer = 0;
+        }
+      }
+
       if (p.cooldownBoostTimer > 0) p.cooldownBoostTimer--;
 
       if (p.speedBoostTimer > 0) {
@@ -3883,8 +4067,8 @@ if (p.aiBlockHoldTimer > 0) {
 
       if (p.healing) {
         p.healTickTimer--;
-        if (p.healTickTimer <= 0 && p.health < 100) {
-          p.health = Math.min(100, p.health + 1);
+        if (p.healTickTimer <= 0 && p.health < (p.maxHealth || 100)) {
+          p.health = Math.min(p.maxHealth || 100, p.health + 1);
           p.healTickTimer = 20;
         }
       }
@@ -3892,7 +4076,7 @@ if (p.aiBlockHoldTimer > 0) {
       if (p.poisoned && p.poisonTicksLeft > 0) {
         p.poisonTickTimer--;
         if (p.poisonTickTimer <= 0) {
-          p.health -= 1;
+          if (!(p.type === "rainbow" && p.rainbowTurretTimer > 0)) p.health -= 1;
           p.poisonTicksLeft--;
           p.poisonTickTimer = 60;
           if (p.poisonTicksLeft <= 0) {
@@ -4092,6 +4276,23 @@ if (p.aiBlockHoldTimer > 0) {
         return;
       }
 
+      if (proj.type === "rainbowball") {
+        const colors = RAINBOW_COLORS;
+        for (let i = colors.length - 1; i >= 0; i--) {
+          ctx.fillStyle = colors[(i + Math.floor(Date.now() / 90)) % colors.length];
+          ctx.beginPath();
+          ctx.arc(proj.x, proj.y, Math.max(2, proj.radius - i * 0.7), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.strokeStyle = "#111827";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
+
       ctx.fillStyle = proj.color;
       ctx.beginPath();
       ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
@@ -4136,6 +4337,25 @@ if (p.aiBlockHoldTimer > 0) {
         ctx.globalAlpha = 0.35;
         ctx.fillStyle = "#60a5fa";
         ctx.fillRect(p.x - 6, drawY - 6, p.width + 12, drawHeight + 12);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.type === "rainbow") {
+        const pulse = Math.floor(Date.now() / 120);
+        for (let i = 0; i < RAINBOW_COLORS.length; i++) {
+          ctx.globalAlpha = 0.18;
+          ctx.fillStyle = RAINBOW_COLORS[(pulse + i) % RAINBOW_COLORS.length];
+          const grow = 8 + i * 2;
+          ctx.fillRect(p.x - grow / 2, drawY - grow / 2, p.width + grow, drawHeight + grow);
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.rainbowTurretTimer > 0) {
+        ctx.globalAlpha = 0.55;
+        ctx.strokeStyle = RAINBOW_COLORS[Math.floor(Date.now() / 90) % RAINBOW_COLORS.length];
+        ctx.lineWidth = 5;
+        ctx.strokeRect(p.x - 10, drawY - 10, p.width + 20, drawHeight + 20);
         ctx.globalAlpha = 1;
       }
 
@@ -4248,7 +4468,16 @@ if (p.aiBlockHoldTimer > 0) {
   ctx.restore();
 }
 
-ctx.fillStyle = p.color;
+if (p.type === "rainbow") {
+  const bodyGradient = ctx.createLinearGradient(p.x, drawY, p.x + p.width, drawY + drawHeight);
+  const shift = Math.floor(Date.now() / 140) % RAINBOW_COLORS.length;
+  RAINBOW_COLORS.forEach((color, index) => {
+    bodyGradient.addColorStop(index / (RAINBOW_COLORS.length - 1), RAINBOW_COLORS[(index + shift) % RAINBOW_COLORS.length]);
+  });
+  ctx.fillStyle = bodyGradient;
+} else {
+  ctx.fillStyle = p.color;
+}
 ctx.fillRect(p.x, drawY, p.width, drawHeight);
 
 ctx.strokeStyle = "#000000";
@@ -4281,6 +4510,16 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
         ctx.strokeStyle = "rgba(251,191,36,0.95)";
         ctx.lineWidth = 4;
         ctx.strokeRect(p.x - 5, drawY - 5, p.width + 10, drawHeight + 10);
+      }
+
+      if (p.isSummon) {
+        const barW = 44;
+        const barH = 5;
+        const hpPct = Math.max(0, Math.min(1, p.health / (p.maxHealth || 15)));
+        ctx.fillStyle = "rgba(17,24,39,0.85)";
+        ctx.fillRect(p.x - 2, p.y + p.height + 6, barW, barH);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x - 2, p.y + p.height + 6, barW * hpPct, barH);
       }
 
       if (is2v2) {
@@ -4415,7 +4654,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
         }
 
         for (const p of fighters) {
-          if (!p.isHuman && p.team === 2) updateAI(p);
+          if (!p.isHuman && !p.dummy) updateAI(p);
         }
 
         for (const p of fighters) updatePerFrame(p);
@@ -4448,6 +4687,17 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
         for (let i = projectiles.current.length - 1; i >= 0; i--) {
           const proj = projectiles.current[i];
+          if (proj.homing && proj.owner?.alive) {
+            const target = getNearestEnemy(proj.owner);
+            if (target) {
+              const dx = target.x + target.width / 2 - proj.x;
+              const dy = target.y + target.height / 2 - proj.y;
+              const distance = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+              const speed = proj.speed || 12;
+              proj.vx = (dx / distance) * speed;
+              proj.vy = (dy / distance) * speed;
+            }
+          }
           proj.x += proj.vx;
           proj.y += proj.vy || 0;
 
@@ -4463,6 +4713,13 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
             const dist = Math.sqrt(dx * dx + dy * dy);
 
             if (dist < target.width / 2 + proj.radius) {
+              if (target.type === "rainbow" && target.rainbowTurretTimer > 0) {
+                if (proj.type === "yellowspear" && proj.owner) proj.owner.spearLocked = false;
+                projectiles.current.splice(i, 1);
+                handledProjectile = true;
+                break;
+              }
+
               if (target.reflecting) {
                 if (proj.type === "yellowspear" && proj.owner) proj.owner.spearLocked = false;
 
@@ -4564,19 +4821,19 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
         const f2 = fighters.find((f) => f.team === 2);
         const f1Tag = mode === "online" ? f1.playerName || "Player 1" : "You";
         const f2Tag = mode === "online" ? f2.playerName || "Player 2" : f2.isHuman ? "P2" : gameConfig.practiceDummy ? "Dummy" : "AI";
-        drawHealthBarSmall(`${f1.name} (${f1Tag})`, f1.alive ? f1.health : 0, 30, 20, f1.color, team1Rounds, false);
-        drawHealthBarSmall(`${f2.name} (${f2Tag})`, f2.alive ? f2.health : 0, WORLD_W - 220, 20, f2.color, team2Rounds, true);
+        drawHealthBarSmall(`${f1.name} (${f1Tag})`, f1.alive ? f1.health : 0, 30, 20, f1.type === "rainbow" ? "rainbow" : f1.color, team1Rounds, false, f1.maxHealth || 100);
+        drawHealthBarSmall(`${f2.name} (${f2Tag})`, f2.alive ? f2.health : 0, WORLD_W - 220, 20, f2.type === "rainbow" ? "rainbow" : f2.color, team2Rounds, true, f2.maxHealth || 100);
       } else {
         const p1 = fighters.find((f) => f.id === "p1");
         const p2 = fighters.find((f) => f.id === "p2");
         const e1 = fighters.find((f) => f.id === "ai1");
         const e2 = fighters.find((f) => f.id === "ai2");
 
-        drawHealthBarSmall(`${p1.name} (P1)`, p1.alive ? p1.health : 0, 20, 18, p1.color, team1Rounds, false);
-        drawHealthBarSmall(`${p2.name} (P2)`, p2.alive ? p2.health : 0, 20, 86, p2.color, null, false);
+        drawHealthBarSmall(`${p1.name} (P1)`, p1.alive ? p1.health : 0, 20, 18, p1.type === "rainbow" ? "rainbow" : p1.color, team1Rounds, false, p1.maxHealth || 100);
+        drawHealthBarSmall(`${p2.name} (P2)`, p2.alive ? p2.health : 0, 20, 86, p2.type === "rainbow" ? "rainbow" : p2.color, null, false, p2.maxHealth || 100);
 
-        drawHealthBarSmall(`${e1.name} (E1)`, e1.alive ? e1.health : 0, WORLD_W - 210, 18, e1.color, team2Rounds, true);
-        drawHealthBarSmall(`${e2.name} (E2)`, e2.alive ? e2.health : 0, WORLD_W - 210, 86, e2.color, null, true);
+        drawHealthBarSmall(`${e1.name} (E1)`, e1.alive ? e1.health : 0, WORLD_W - 210, 18, e1.type === "rainbow" ? "rainbow" : e1.color, team2Rounds, true, e1.maxHealth || 100);
+        drawHealthBarSmall(`${e2.name} (E2)`, e2.alive ? e2.health : 0, WORLD_W - 210, 86, e2.type === "rainbow" ? "rainbow" : e2.color, null, true, e2.maxHealth || 100);
       }
 
       drawRoundTimer(Math.max(0, secondsLeft));
@@ -4680,10 +4937,17 @@ useEffect(() => {
   const CharSelectModal = () => {
     if (!charSelect) return null;
     const matchId = charSelect.matchId || (matched && matched.matchId) || (onlineMatchRef.current && onlineMatchRef.current.matchId);
+    const lockedRainbow = charSelect.lockedRainbow || isRainbowUser(user?.username);
     return (
       <div className="fixed inset-0 bg-black/10 backdrop-blur-[2px] z-50 flex items-center justify-center">
         <div className="bg-white/95 rounded-2xl p-6 max-w-4xl w-full mx-4 shadow-2xl">
           <h3 className="text-xl mb-3">Character Select — {Math.ceil((charSelect.timeLeft || 20000) / 1000)}s</h3>
+          {lockedRainbow ? (
+            <div className="rounded-3xl border border-fuchsia-200 bg-fuchsia-50 p-8 text-center">
+              <div className="text-3xl font-light text-gray-900 mb-2">Rainbow selected</div>
+              <div className="text-sm text-gray-600 font-light">This username is locked into the secret Rainbow fighter.</div>
+            </div>
+          ) : (
           <div className="grid grid-cols-4 gap-3">
             {FIGHTER_COLORS.map((c) => (
               <ColorCard
@@ -4703,6 +4967,7 @@ useEffect(() => {
               />
             ))}
           </div>
+          )}
           <div className="mt-4 text-sm text-gray-600">Opponent: {matched?.opponent?.username} {charSelect.opponent ? `(selected: ${charSelect.opponent})` : ''}</div>
         </div>
       </div>
@@ -5193,7 +5458,7 @@ useEffect(() => {
               { key: "practice", title: "Practice", desc: "100-HP dummy (KO disappears) + Refresh button" },
               { key: "single", title: "Single Player", desc: "Fight an AI (best of 3)" },
               { key: "coop", title: "Multi Player", desc: "2v2: P1+P2 vs AI team (pick both enemies)" },
-              { key: "ladder", title: "Ladder", desc: "Face all the colors, and the last fight is a mirror match." },
+              { key: "ladder", title: "Ladder", desc: "Face all the colors, then survive the Rainbow boss fight." },
               { key: "offline", title: "1v1 Offline", desc: "Local PvP (P1 vs P2)" },
               { key: "online", title: "1v1 Online", desc: "Play against real players online" },
             ].map((m) => {
@@ -5284,13 +5549,22 @@ useEffect(() => {
                     });
 
                     s.on('char:selectStart', (d) => {
+                      const lockedRainbow = isRainbowUser(user?.username);
+                      const nextMatchId = d.matchId || (matched && matched.matchId) || (d && d.matchId);
                       if (d?.matchId) {
                         setMatched((prev) => {
                           if (prev && prev.matchId === d.matchId) return prev;
                           return { ...(prev || {}), matchId: d.matchId, side: d.side || prev?.side };
                         });
                       }
-                      setCharSelect({ timeLeft: d.timeLimit || 20000, matchId: d.matchId || (matched && matched.matchId) || (d && d.matchId), me: null, opponent: null });
+                      setCharSelect({ timeLeft: d.timeLimit || 20000, matchId: nextMatchId, me: lockedRainbow ? "rainbow" : null, opponent: null, lockedRainbow });
+                      if (lockedRainbow && nextMatchId) {
+                        try {
+                          const side = matched?.side || onlineMatchRef.current?.side || "left";
+                          if (side === "left") setP1Color("rainbow"); else setP2Color("rainbow");
+                        } catch {}
+                        s.emit('char:selected', { matchId: nextMatchId, character: 'rainbow' });
+                      }
                     });
 
                     s.on('opponent:charSelected', (payload) => {
