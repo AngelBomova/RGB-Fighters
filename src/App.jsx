@@ -862,6 +862,9 @@ const toggleFullscreen = async () => {
   const randStage = () => randPick(["default", "recursion", "sky", "hourglass", "bottom"]);
   const FIGHTER_COLORS = ["red", "blue", "green", "black", "white", "purple", "yellow", "orange"];
   const RAINBOW_COLORS = ["#ef4444", "#f97316", "#facc15", "#22c55e", "#3b82f6", "#a855f7", "#f8fafc"];
+  const LADDER_TOTAL_MATCHES = FIGHTER_COLORS.length + 1;
+  const LADDER_MIRROR_INDEX = FIGHTER_COLORS.length - 1;
+  const LADDER_RAINBOW_INDEX = FIGHTER_COLORS.length;
   const randColor = () => randPick(FIGHTER_COLORS);
   const isRainbowUser = (name) => String(name || "") === "Rainbow";
   const fighterNote = (c) =>
@@ -969,9 +972,10 @@ const toggleFullscreen = async () => {
 
     if (mode === "ladder") {
       const idx = ladderIndex;
-      const isLast = idx === FIGHTER_COLORS.length - 1;
+      const isMirror = idx === LADDER_MIRROR_INDEX;
+      const isLast = idx === LADDER_RAINBOW_INDEX;
 
-      const oppColor = isLast ? "rainbow" : ladderOppOrder[idx];
+      const oppColor = isLast ? "rainbow" : isMirror ? p1Color : ladderOppOrder[idx] || randColor();
       const diffByStep = idx <= 0 ? "easy" : idx <= 3 ? "medium" : "hard";
 
       return {
@@ -5458,7 +5462,7 @@ useEffect(() => {
               { key: "practice", title: "Practice", desc: "100-HP dummy (KO disappears) + Refresh button" },
               { key: "single", title: "Single Player", desc: "Fight an AI (best of 3)" },
               { key: "coop", title: "Multi Player", desc: "2v2: P1+P2 vs AI team (pick both enemies)" },
-              { key: "ladder", title: "Ladder", desc: "Face all the colors, then survive the Rainbow boss fight." },
+              { key: "ladder", title: "Ladder", desc: "Face all the colors" },
               { key: "offline", title: "1v1 Offline", desc: "Local PvP (P1 vs P2)" },
               { key: "online", title: "1v1 Online", desc: "Play against real players online" },
             ].map((m) => {
@@ -6020,7 +6024,7 @@ useEffect(() => {
   }
 
   if (menuStep === "playing") {
-    const ladderLabel = mode === "ladder" ? `Ladder Match ${ladderIndex + 1} / ${FIGHTER_COLORS.length}` : null;
+    const ladderLabel = mode === "ladder" ? `Ladder Match ${ladderIndex + 1} / ${LADDER_TOTAL_MATCHES}` : null;
 
     const onExit = () => {
       goHome();
@@ -6031,7 +6035,7 @@ useEffect(() => {
 
       if (matchWinnerText === "Team 1") {
         const next = ladderIndex + 1;
-        if (next >= FIGHTER_COLORS.length) {
+        if (next >= LADDER_TOTAL_MATCHES) {
           setLadderWin(true);
           setMenuStep("ladder_result");
           return;
