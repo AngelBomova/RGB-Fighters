@@ -6,6 +6,7 @@ import 'dotenv/config';
 import pool, { initializeDatabase } from './db.js';
 import authRoutes from './routes/auth.js';
 import leaderboardRoutes from './routes/leaderboard.js';
+import achievementsRoutes, { unlockAchievement } from './routes/achievements.js';
 import { verifyToken, verifySocketToken } from './middleware/auth.js';
 
 const app = express();
@@ -36,6 +37,7 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/achievements', achievementsRoutes);
 
 app.post('/api/match/leave', async (req, res) => {
   try {
@@ -221,6 +223,11 @@ async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId) {
         'INSERT INTO matches (player1_id, player2_id, winner_id, p1_rounds, p2_rounds, elo_change) VALUES ($1, $2, $3, $4, $5, $6)',
         [match.p1.userId, match.p2.userId, winnerId, p1Rounds, p2Rounds, eloChange]
       );
+
+      const loserChar = isP1Winner ? match.p2Char : match.p1Char;
+      if (String(loserChar || '').toLowerCase() === 'rainbow') {
+        await unlockAchievement(winnerId, 'online:rainbow');
+      }
     }
 
     const p1Data = await pool.query('SELECT elo, wins, losses FROM users WHERE id = $1', [match.p1.userId]);

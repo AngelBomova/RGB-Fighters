@@ -25,8 +25,10 @@ function FighterGame() {
   const [mode, setMode] = useState("home");
 
   const [menuStep, setMenuStep] = useState("idle");
+  const menuStepRef = useRef(menuStep);
 
   const [user, setUser] = useState(null);
+  const [achievements, setAchievements] = useState([]);
   const [token, setToken] = useState(() => {
     try {
       return localStorage.getItem('rgb_token');
@@ -48,6 +50,29 @@ function FighterGame() {
     });
     return () => (mounted = false);
   }, [token]);
+
+  useEffect(() => {
+    if (!token) {
+      setAchievements([]);
+      return;
+    }
+    let mounted = true;
+    api.getAchievements(token).then((data) => {
+      if (!mounted) return;
+      setAchievements(Array.isArray(data?.achievements) ? data.achievements : []);
+    }).catch(() => {
+      if (mounted) setAchievements([]);
+    });
+    return () => (mounted = false);
+  }, [token]);
+
+  const refreshAchievements = () => {
+    const authToken = token || (typeof localStorage !== "undefined" ? localStorage.getItem("rgb_token") : null);
+    if (!authToken) return;
+    api.getAchievements(authToken).then((data) => {
+      setAchievements(Array.isArray(data?.achievements) ? data.achievements : []);
+    }).catch(() => {});
+  };
 
   const refreshOnlineUser = () => {
     const authToken = token || (typeof localStorage !== "undefined" ? localStorage.getItem("rgb_token") : null);
@@ -113,6 +138,7 @@ function FighterGame() {
   const [ladderLoss, setLadderLoss] = useState(false);
   const [ladderWin, setLadderWin] = useState(false);
   const [ladderOppOrder, setLadderOppOrder] = useState([]);
+  const ladderAchievementSentRef = useRef("");
 
   const canvasRef = useRef(null);
 
@@ -145,10 +171,13 @@ const toggleFullscreen = async () => {
   const onlineLastStatePostAtRef = useRef(0);
   const onlineIsHostRef = useRef(false);
   const onlineMatchEndSentRef = useRef(false);
+  const onlineReturnScheduledRef = useRef(false);
   const pausedRef = useRef(false);
 
   const practiceRefreshRef = useRef(null);
   const musicAudioRef = useRef({});
+  const sfxAudioPoolRef = useRef({});
+  const sfxAudioIndexRef = useRef({});
   const currentMusicRef = useRef("");
   const audioUnlockedRef = useRef(false);
   const [musicReady, setMusicReady] = useState(false);
@@ -196,6 +225,8 @@ const toggleFullscreen = async () => {
   const [gameOver, setGameOver] = useState(false);
   const [roundWinnerText, setRoundWinnerText] = useState(null);
   const [matchWinnerText, setMatchWinnerText] = useState(null);
+  const gameOverRef = useRef(gameOver);
+  const matchWinnerTextRef = useRef(matchWinnerText);
 
   const [team1Rounds, setTeam1Rounds] = useState(0);
   const [team2Rounds, setTeam2Rounds] = useState(0);
@@ -345,6 +376,9 @@ const toggleFullscreen = async () => {
     try {
       localStorage.setItem("rgb_fighters_sfx_volume_v1", String(sfxVolume));
     } catch {}
+    for (const audio of Object.values(sfxAudioPoolRef.current).flat()) {
+      audio.volume = 0.65 * (sfxVolume / 100);
+    }
   }, [sfxVolume]);
 
   useEffect(() => {
@@ -372,7 +406,34 @@ const toggleFullscreen = async () => {
     }
 
     musicAudioRef.current = tracks;
+
+    const musicSoundNames = new Set(Object.values(musicNames));
+    const sfxPools = {};
+    for (const [name, url] of Object.entries(RGB_SOUND_URLS)) {
+      if (musicSoundNames.has(name)) continue;
+      sfxPools[name] = Array.from({ length: 6 }, () => {
+        const audio = new Audio(url);
+        audio.preload = "auto";
+        audio.volume = 0.65 * (sfxVolumeRef.current / 100);
+        return audio;
+      });
+      sfxAudioIndexRef.current[name] = 0;
+    }
+    sfxAudioPoolRef.current = sfxPools;
+
     setMusicReady(true);
+
+    return () => {
+      Object.values(tracks).forEach((audio) => audio.pause());
+      Object.values(sfxPools).flat().forEach((audio) => {
+        audio.pause();
+        audio.src = "";
+      });
+      musicAudioRef.current = {};
+      sfxAudioPoolRef.current = {};
+      sfxAudioIndexRef.current = {};
+      currentMusicRef.current = "";
+    };
   }, []);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -463,7 +524,23 @@ const toggleFullscreen = async () => {
     if (!url) return;
 
     try {
-      const audio = new Audio(url);
+      const pool = sfxAudioPoolRef.current[name];
+      let audio = null;
+      if (pool?.length) {
+        const startIndex = sfxAudioIndexRef.current[name] || 0;
+        audio = pool.find((item) => item.paused || item.ended);
+        if (!audio && pool.length < 12) {
+          audio = new Audio(url);
+          audio.preload = "auto";
+          pool.push(audio);
+        }
+        if (!audio) audio = pool[startIndex % pool.length];
+        sfxAudioIndexRef.current[name] = (startIndex + 1) % pool.length;
+      } else {
+        audio = new Audio(url);
+      }
+      audio.pause();
+      audio.currentTime = 0;
       audio.volume = 0.65 * (sfxVolumeRef.current / 100);
       audio.play().catch(() => {});
     } catch {}
@@ -818,6 +895,15 @@ const toggleFullscreen = async () => {
     roundPhaseRef.current = roundPhase;
   }, [roundPhase]);
   useEffect(() => {
+    menuStepRef.current = menuStep;
+  }, [menuStep]);
+  useEffect(() => {
+    gameOverRef.current = gameOver;
+  }, [gameOver]);
+  useEffect(() => {
+    matchWinnerTextRef.current = matchWinnerText;
+  }, [matchWinnerText]);
+  useEffect(() => {
     if (roundPhase !== "countdown") return;
     if (countdownEndsAtRef.current) return;
     countdownEndsAtRef.current = Date.now() + 4000;
@@ -867,6 +953,21 @@ const toggleFullscreen = async () => {
   const LADDER_RAINBOW_INDEX = FIGHTER_COLORS.length;
   const randColor = () => randPick(FIGHTER_COLORS);
   const isRainbowUser = (name) => String(name || "") === "Rainbow";
+
+  useEffect(() => {
+    if (mode !== "ladder" || !gameOver || matchWinnerText !== "Team 1" || ladderIndex !== LADDER_RAINBOW_INDEX) return;
+    const authToken = token || (typeof localStorage !== "undefined" ? localStorage.getItem("rgb_token") : null);
+    if (!authToken || !p1Color || !difficulty) return;
+
+    const achievementKey = `ladder:${p1Color}:${difficulty}`;
+    if (ladderAchievementSentRef.current === achievementKey) return;
+    ladderAchievementSentRef.current = achievementKey;
+
+    api.unlockLadderAchievement(authToken, p1Color, difficulty)
+      .then(refreshAchievements)
+      .catch(() => {});
+  }, [mode, gameOver, matchWinnerText, ladderIndex, p1Color, difficulty, token]);
+
   const fighterNote = (c) =>
     c === "red"
       ? "Fire & Dash"
@@ -1081,6 +1182,7 @@ const toggleFullscreen = async () => {
     onlineSyncMatchIdRef.current = null;
     onlineLastStatePostAtRef.current = 0;
     onlineMatchEndSentRef.current = false;
+    onlineReturnScheduledRef.current = false;
     countdownEndsAtRef.current = null;
     roundEndsAtRef.current = null;
     setOnlinePlayerNames({ p1: "", p2: "" });
@@ -1203,6 +1305,7 @@ const toggleFullscreen = async () => {
         damage: proj.damage,
         homing: proj.homing,
         speed: proj.speed,
+        reflected: proj.reflected,
       })),
     };
   };
@@ -1367,6 +1470,7 @@ const toggleFullscreen = async () => {
     setLadderLoss(false);
     setLadderWin(false);
     setLadderOppOrder([]);
+    ladderAchievementSentRef.current = "";
 
     resetAll();
   };
@@ -1388,11 +1492,18 @@ const toggleFullscreen = async () => {
     setLadderLoss(false);
     setLadderWin(false);
     setLadderOppOrder([]);
+    ladderAchievementSentRef.current = "";
 
     resetAll();
 
     if (m === "online") {
       setMenuStep("comingsoon");
+      return;
+    }
+
+    if (m === "achievements") {
+      refreshAchievements();
+      setMenuStep("achievements");
       return;
     }
 
@@ -2015,7 +2126,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
 
     const applyDamage = (attacker, defender, attackType, extra = {}) => {
       if (!defender.alive) return 0;
-      if (defender.type === "rainbow" && defender.rainbowTurretTimer > 0) return 0;
+      if (defender.type === "rainbow" && defender.rainbowTurretTimer > 0 && !extra.ignoreRainbowInvulnerable) return 0;
       if (attackType === "iceball" && defender.frozen) return 0;
 
       breakSpearStunIfNeeded(defender);
@@ -2172,6 +2283,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
       if (defender.reflecting) {
         defender.reflecting = false;
         defender.reflectTimer = 0;
+        hitstunFrames += 30;
       }
 
       if (defender.spearLocked) {
@@ -2666,12 +2778,7 @@ const beginYellowReflect = (ai) => {
   ai.vx = 0;
   ai.reflecting = true;
   ai.reflectTimer = 60;
-  ai.canSpecial2 = false;
   playSfx("reflect");
-
-  setManagedTimeout(() => {
-    ai.canSpecial2 = true;
-  }, 3000);
 
   return true;
 };
@@ -3407,6 +3514,15 @@ if (hpW > 0) {
 
     const aliveOnTeam = (team) => fighters.filter((f) => f.alive && f.team === team && !f.isSummon);
     const teamTotalHP = (team) => aliveOnTeam(team).reduce((sum, f) => sum + Math.max(0, f.health), 0);
+    const teamDisplayName = (team) => {
+      if (mode === "online") {
+        return team === 1 ? onlinePlayerNames.p1 || "Player 1" : onlinePlayerNames.p2 || "Player 2";
+      }
+      if (is2v2) return team === 1 ? "Team 1" : "Team 2";
+      const fighter = fighters.find((f) => f.team === team);
+      if (team === 1) return "You";
+      return fighter?.isHuman ? "P2" : gameConfig.practiceDummy ? "Dummy" : "AI";
+    };
 
     const markKOIfNeeded = (p) => {
       if (!p.alive) return;
@@ -3618,6 +3734,15 @@ if (hpW > 0) {
           if (canUseP1Controller && controllerInput) keysPressed.current[controllerInput] = false;
         }
       };
+
+      if (p.type === "electric" && p.reflecting) {
+        if (getHeld("special2") && !p.specialDisabled) {
+          p.reflectTimer = 2;
+        } else {
+          p.reflecting = false;
+          p.reflectTimer = 0;
+        }
+      }
 
       if (p.spearLocked || p.reflecting || p.purpleCharging || p.orangeCharging) {
         p.vx = 0;
@@ -3839,11 +3964,8 @@ if (hpW > 0) {
               p.blocking = false;
               p.ducking = false;
               p.reflecting = true;
-              p.reflectTimer = 60;
+              p.reflectTimer = 2;
               playSfx("reflect");
-              p.canSpecial2 = false;
-              setManagedTimeout(() => (p.canSpecial2 = true), 3000);
-              clearHeld("special2");
             } else if (p.type === "explosion" && p.cooldownBoostTimer <= 0) {
               p.vx = 0;
               p.blocking = false;
@@ -4182,11 +4304,11 @@ if (p.aiBlockHoldTimer > 0) {
           return true;
         }
         if (t1Alive === 0) {
-          endRound(2, "Team 2 wins (KO)");
+          endRound(2, `${teamDisplayName(2)} won the round`);
           return true;
         }
         if (t2Alive === 0) {
-          endRound(1, "Team 1 wins (KO)");
+          endRound(1, `${teamDisplayName(1)} won the round`);
           return true;
         }
         return false;
@@ -4197,11 +4319,11 @@ if (p.aiBlockHoldTimer > 0) {
         return true;
       }
       if (t1Alive === 0) {
-        endRound(2, "Team 2 wins (Team KO)");
+        endRound(2, `${teamDisplayName(2)} won the round`);
         return true;
       }
       if (t2Alive === 0) {
-        endRound(1, "Team 1 wins (Team KO)");
+        endRound(1, `${teamDisplayName(1)} won the round`);
         return true;
       }
       return false;
@@ -4214,11 +4336,11 @@ if (p.aiBlockHoldTimer > 0) {
       const t2 = teamTotalHP(2);
 
       if (t1 > t2) {
-        endRound(1, "Team 1 wins (Time)");
+        endRound(1, `${teamDisplayName(1)} won the round by time`);
         return true;
       }
       if (t2 > t1) {
-        endRound(2, "Team 2 wins (Time)");
+        endRound(2, `${teamDisplayName(2)} won the round by time`);
         return true;
       }
       tieRedoRound();
@@ -4717,7 +4839,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
             const dist = Math.sqrt(dx * dx + dy * dy);
 
             if (dist < target.width / 2 + proj.radius) {
-              if (target.type === "rainbow" && target.rainbowTurretTimer > 0) {
+              if (target.type === "rainbow" && target.rainbowTurretTimer > 0 && !proj.reflected) {
                 if (proj.type === "yellowspear" && proj.owner) proj.owner.spearLocked = false;
                 projectiles.current.splice(i, 1);
                 handledProjectile = true;
@@ -4736,6 +4858,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 proj.y = target.y + target.height / 2;
                 proj.vx = newDir * Math.max(8, Math.abs(oldVx) || 8);
                 proj.vy = 0;
+                proj.reflected = true;
 
                 handledProjectile = true;
                 break;
@@ -4792,6 +4915,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 applyDamage(proj.owner, target, proj.type, {
                   attackHeight: proj.attackHeight,
                   knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
+                  ignoreRainbowInvulnerable: !!proj.reflected,
                 });
               }
 
@@ -4886,7 +5010,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
     projectiles.current = [];
 
     primeNewRound();
-  }, 1200);
+  }, 1800);
 
   return () => window.clearTimeout(id);
 }, [gameOver, matchWinnerText, menuStep, mode]);
@@ -4905,13 +5029,16 @@ useEffect(() => {
   onlineMatchEndSentRef.current = true;
   const finishOnlineMatch = () => {
     refreshOnlineUser();
+    refreshAchievements();
     clearOnlineSession({ disconnectSocket: true, keepLobby: false });
     setSettingsOpen(false);
     setMode("home");
     setMenuStep("idle");
     resetAll();
   };
-  const fallbackId = window.setTimeout(finishOnlineMatch, 1200);
+  if (onlineReturnScheduledRef.current) return;
+  onlineReturnScheduledRef.current = true;
+  window.setTimeout(finishOnlineMatch, 2000);
 
   const resultPayload = {
     matchId: match.matchId,
@@ -4930,10 +5057,7 @@ useEffect(() => {
     }).catch(() => {});
   }
 
-  socket.emit("match:end", resultPayload, () => {
-    window.clearTimeout(fallbackId);
-    finishOnlineMatch();
-  });
+  socket.emit("match:end", resultPayload);
 }, [gameOver, matchWinnerText, team1Rounds, team2Rounds, mode, menuStep, token]);
 
   if (!tailwindLoaded) return <div style={{ padding: 20, textAlign: "center" }}>Loading…</div>;
@@ -4991,7 +5115,7 @@ useEffect(() => {
 
   const GlobalSettingsButton = () => (
     <button
-      className="fixed top-6 right-6 z-40 bg-white/90 backdrop-blur border border-gray-200 rounded-2xl px-4 py-3 hover:bg-white transition flex items-center gap-2"
+      className={`${menuStep === "playing" ? "fixed bottom-6 right-6" : "fixed top-6 right-6"} z-40 bg-white/90 backdrop-blur border border-gray-200 rounded-2xl px-4 py-3 hover:bg-white transition flex items-center gap-2`}
       onClick={() => setSettingsOpen(true)}
     >
       <span className="text-lg">⚙️</span>
@@ -5450,6 +5574,83 @@ useEffect(() => {
     );
   };
 
+  const Medal = ({ filled, color, label }) => (
+    <div className="flex flex-col items-center gap-1">
+      <div
+        className={`w-8 h-8 rounded-full border-2 ${filled ? "" : "bg-white border-gray-300"}`}
+        style={filled ? { background: color, borderColor: color, boxShadow: `0 0 16px ${color}` } : {}}
+        title={label}
+      />
+      <div className="text-[10px] text-gray-500 font-light">{label}</div>
+    </div>
+  );
+
+  const AchievementScreen = () => {
+    const hasAchievement = (key) => achievements.includes(key);
+    const onlineWins = Number(user?.wins) || 0;
+
+    return (
+      <Layout>
+        <div className="bg-white rounded-3xl p-10 text-center max-w-5xl w-full border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
+          <h1 className="text-5xl font-light text-gray-900 mb-3">Achievements</h1>
+          {!user ? (
+            <>
+              <p className="text-lg font-light text-gray-600 mb-8">Sign in through 1v1 Online to view and earn achievements.</p>
+              <button onClick={goHome} className="rounded-2xl px-6 py-3 bg-gray-900 text-white">Return Home</button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-light text-gray-500 mb-8">Logged in as {user.username}</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+                {FIGHTER_COLORS.map((color) => (
+                  <div key={color} className="rounded-3xl border border-gray-100 bg-gray-50 p-5 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-lg text-gray-900 font-light capitalize">{color} Ladder</div>
+                      <div className="text-xs text-gray-500 font-light">Beat the full ladder with {color}</div>
+                    </div>
+                    <div className="flex gap-3">
+                      <Medal filled={hasAchievement(`ladder:${color}:easy`)} color="#cd7f32" label="Easy" />
+                      <Medal filled={hasAchievement(`ladder:${color}:medium`)} color="#9ca3af" label="Medium" />
+                      <Medal filled={hasAchievement(`ladder:${color}:hard`)} color="#facc15" label="Hard" />
+                    </div>
+                  </div>
+                ))}
+                <div className="rounded-3xl border border-gray-100 bg-gray-50 p-5 flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-lg text-gray-900 font-light">Online Wins</div>
+                    <div className="text-xs text-gray-500 font-light">{onlineWins} wins earned</div>
+                  </div>
+                  <div className="flex gap-3">
+                    <Medal filled={onlineWins >= 10} color="#cd7f32" label="10" />
+                    <Medal filled={onlineWins >= 50} color="#9ca3af" label="50" />
+                    <Medal filled={onlineWins >= 100} color="#facc15" label="100" />
+                  </div>
+                </div>
+                <div className="rounded-3xl border border-gray-100 bg-gray-50 p-5 flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-lg text-gray-900 font-light">Rainbow Slayer</div>
+                    <div className="text-xs text-gray-500 font-light">Beat Rainbow in 1v1 Online</div>
+                  </div>
+                  <div
+                    className={`text-4xl ${hasAchievement("online:rainbow") ? "" : "grayscale opacity-25"}`}
+                    style={hasAchievement("online:rainbow") ? { filter: "drop-shadow(0 0 12px rgba(168,85,247,0.8))" } : {}}
+                  >
+                    🌟
+                  </div>
+                </div>
+              </div>
+              <button onClick={goHome} className="mt-8 rounded-2xl px-6 py-3 bg-gray-900 text-white">Return Home</button>
+            </>
+          )}
+        </div>
+      </Layout>
+    );
+  };
+
+  if (menuStep === "achievements") {
+    return <AchievementScreen />;
+  }
+
   if (mode === "home") {
     return (
       <Layout>
@@ -5464,6 +5665,7 @@ useEffect(() => {
               { key: "coop", title: "Multi Player", desc: "2v2: P1+P2 vs AI team (pick both enemies)" },
               { key: "ladder", title: "Ladder", desc: "Face all the colors" },
               { key: "offline", title: "1v1 Offline", desc: "Local PvP (P1 vs P2)" },
+              { key: "achievements", title: "Achievements", desc: "Collect them all" },
               { key: "online", title: "1v1 Online", desc: "Play against real players online" },
             ].map((m) => {
               const disabled = false;
@@ -5643,6 +5845,7 @@ useEffect(() => {
                       };
                       onlineIsHostRef.current = isHost;
                       onlineMatchEndSentRef.current = false;
+                      onlineReturnScheduledRef.current = false;
                       onlineSyncSeqRef.current = 0;
                       onlineLastSyncSeqRef.current = 0;
                       onlineSyncMatchIdRef.current = d.matchId || (matched && matched.matchId) || null;
@@ -5689,12 +5892,22 @@ useEffect(() => {
         wins: typeof d.wins !== "undefined" ? d.wins : prev.wins,
         losses: typeof d.losses !== "undefined" ? d.losses : prev.losses,
       } : prev);
-      refreshOnlineUser();
-      clearOnlineSession({ disconnectSocket: true, keepLobby: false });
-      setSettingsOpen(false);
-      setMode("home");
-      setMenuStep("idle");
-      resetAll();
+      const finish = () => {
+        refreshOnlineUser();
+        refreshAchievements();
+        clearOnlineSession({ disconnectSocket: true, keepLobby: false });
+        setSettingsOpen(false);
+        setMode("home");
+        setMenuStep("idle");
+        resetAll();
+      };
+      if (onlineReturnScheduledRef.current) return;
+      if (menuStepRef.current === "playing") {
+        onlineReturnScheduledRef.current = true;
+        setManagedTimeout(finish, 2000);
+      } else {
+        finish();
+      }
     });
 
     s.on('match:ended', () => {
@@ -5724,7 +5937,7 @@ useEffect(() => {
                   }} className="bg-yellow-600 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition">Cancel Search</button>
                 )}
                 {onlineError && <div className="text-red-500 text-sm max-w-md">{onlineError}</div>}
-                <button onClick={() => { goHome(); localStorage.removeItem('rgb_token'); setToken(null); setUser(null); }} className="bg-red-600 text-white rounded-2xl px-6 py-3">Logout</button>
+                <button onClick={() => { goHome(); localStorage.removeItem('rgb_token'); setToken(null); setUser(null); setAchievements([]); }} className="bg-red-600 text-white rounded-2xl px-6 py-3">Logout</button>
                 <button onClick={() => setMenuStep('leaderboard')} className="bg-gray-900 text-white rounded-2xl px-6 py-3">Leaderboard</button>
                 <button onClick={goHome} className="bg-gray-200 text-gray-900 rounded-2xl px-6 py-3">Return Home</button>
               </div>
@@ -6056,7 +6269,12 @@ useEffect(() => {
       }
     };
 
-    const showOverlay = gameOver && mode !== "online";
+    const winnerDisplayName = matchWinnerText === "Team 1"
+      ? mode === "online" ? onlinePlayerNames.p1 || "Player 1" : "Team 1"
+      : matchWinnerText === "Team 2"
+      ? mode === "online" ? onlinePlayerNames.p2 || "Player 2" : "Team 2"
+      : "";
+    const showOverlay = gameOver;
 
     return (
       <div className="fixed inset-0 overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif' }}>
@@ -6065,7 +6283,7 @@ useEffect(() => {
         <GlobalSettingsButton />
         <SettingsModal />
 
-        <div className="absolute top-6 left-6 z-40 flex items-center gap-3">
+        <div className="absolute bottom-6 left-6 z-40 flex items-center gap-3">
           <button onClick={onExit} className="bg-white/80 backdrop-blur border border-gray-200 rounded-2xl px-5 py-3 hover:bg-white transition">
             <span className="text-sm text-gray-800 font-light">Exit</span>
           </button>
@@ -6088,11 +6306,15 @@ useEffect(() => {
         {showOverlay && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="bg-white/85 backdrop-blur rounded-3xl p-10 border border-gray-200 text-center max-w-xl mx-6">
-              <div className="text-3xl font-light text-gray-900 mb-2">{matchWinnerText ? `MATCH WINNER: ${matchWinnerText}` : `ROUND: ${roundWinnerText || "Complete"}`}</div>
-              <div className="text-sm text-gray-600 font-light mb-6">{matchWinnerText ? "Best of 3 complete." : "Prepare for the next round."}</div>
+              <div className="text-3xl font-light text-gray-900 mb-2">{matchWinnerText ? `${winnerDisplayName} won the game` : `${roundWinnerText || "Round complete"}`}</div>
+              <div className="text-sm text-gray-600 font-light mb-6">{matchWinnerText ? "Best of 3 complete." : "Next round starting..."}</div>
 
               <div className="flex gap-3 justify-center flex-wrap">
-                {!matchWinnerText ? (
+                {mode === "online" && matchWinnerText ? (
+                  <div className="bg-gray-900 text-white rounded-2xl px-6 py-3">
+                    Returning to lobby...
+                  </div>
+                ) : !matchWinnerText ? (
                   <div className="bg-gray-900 text-white rounded-2xl px-6 py-3">
   Next round starting...
 </div>
@@ -6100,19 +6322,17 @@ useEffect(() => {
                   <button onClick={onNextMatchLadder} className="bg-gray-900 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition">
                     {matchWinnerText === "Team 1" ? "Next Ladder Match" : "Ladder Failed"}
                   </button>
-                ) : mode === "online" ? (
-                  <button onClick={goHome} className="bg-gray-900 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition">
-                    Home
-                  </button>
                 ) : (
                   <button onClick={() => startModeFlow(mode)} className="bg-gray-900 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition">
                     Back to Mode Menu
                   </button>
                 )}
 
-                <button onClick={goHome} className="rounded-2xl px-6 py-3 border border-gray-200 hover:bg-gray-50 transition font-light text-gray-800">
-                  Home
-                </button>
+                {mode !== "online" && (
+                  <button onClick={goHome} className="rounded-2xl px-6 py-3 border border-gray-200 hover:bg-gray-50 transition font-light text-gray-800">
+                    Home
+                  </button>
+                )}
               </div>
                 
               {mode === "practice" && <div className="mt-4 text-xs text-gray-500 font-light">Tip: Use Refresh to reset positions and bring the dummy back after a KO.</div>}

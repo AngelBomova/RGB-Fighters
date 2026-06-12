@@ -87,8 +87,10 @@ async function initSqlite() {
     const data = {
       users: [],
       matches: [],
+      achievements: [],
       nextUserId: 1,
       nextMatchId: 1,
+      nextAchievementId: 1,
     };
 
     const toRow = (u) => ({ id: u.id, username: u.username, elo: u.elo, wins: u.wins, losses: u.losses, password_hash: u.password_hash });
@@ -142,6 +144,20 @@ async function initSqlite() {
         if (s.includes('order by wins') && s.includes('limit')) {
           const rows = data.users.map(toRow).sort((a, b) => (b.wins || 0) - (a.wins || 0)).slice(0, 10);
           return { rows };
+        }
+
+        if (s.includes('select achievement_key') && s.includes('from achievements')) {
+          const userId = params[0];
+          return { rows: data.achievements.filter((a) => a.user_id === userId).map((a) => ({ achievement_key: a.achievement_key })) };
+        }
+
+        if (s.startsWith('insert') && s.includes('into achievements')) {
+          const userId = params[0];
+          const achievementKey = params[1];
+          if (!data.achievements.some((a) => a.user_id === userId && a.achievement_key === achievementKey)) {
+            data.achievements.push({ id: data.nextAchievementId++, user_id: userId, achievement_key: achievementKey });
+          }
+          return { rows: [] };
         }
 
         return { rows: [] };

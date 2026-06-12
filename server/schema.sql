@@ -20,5 +20,14 @@ CREATE TABLE IF NOT EXISTS matches (
   played_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS achievements (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id),
+  achievement_key TEXT NOT NULL,
+  achieved_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, achievement_key)
+);
+
 CREATE INDEX IF NOT EXISTS idx_users_elo ON users(elo DESC);
 CREATE INDEX IF NOT EXISTS idx_users_wins ON users(wins DESC);
+CREATE INDEX IF NOT EXISTS idx_achievements_user ON achievements(user_id);

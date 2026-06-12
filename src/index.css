@@ -3,9 +3,9 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  color-scheme: light;
+  color: #111827;
+  background-color: #020617;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -28,6 +28,12 @@ body {
   place-items: center;
   min-width: 600px;
   min-height: 100vh;
+  color: #111827;
+  background-color: #020617;
+}
+
+h1, h2, h3, p, div, span, label {
+  color-scheme: light;
 }
 
 h1 {
@@ -42,7 +48,8 @@ button {
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
+  background-color: #ffffff;
+  color: #111827;
   cursor: pointer;
   transition: border-color 0.25s;
 }
@@ -140,6 +147,15 @@ input[type="range"].audio-step-slider::-moz-range-thumb {
   border-radius: 9999px;
   background: #111827;
   cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  color-scheme: light;
+  background-color: #ffffff;
+  color: #111827;
+  border-color: #d1d5db;
 }
 
 @media (prefers-color-scheme: light) {

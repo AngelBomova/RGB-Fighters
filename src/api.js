@@ -51,4 +51,21 @@ export async function getLeaderboard() {
   return { wins, wlr };
 }
 
-export default { register, login, me, getLeaderboard };
+export async function getAchievements(token) {
+  return request('/api/achievements', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function unlockLadderAchievement(token, color, difficulty) {
+  return request('/api/achievements/ladder', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ color, difficulty }),
+  });
+}
+
+export default { register, login, me, getLeaderboard, getAchievements, unlockLadderAchievement };
