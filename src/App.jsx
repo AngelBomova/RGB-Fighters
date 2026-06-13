@@ -2184,13 +2184,13 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           hitstunFrames = 16;
           break;
         case "dash":
-          damage = 400;
+          damage = 4;
           knockback = 12;
           launchUp = true;
           hitstunFrames = 16;
           break;
         case "fireball":
-          damage = 500;
+          damage = 5;
           knockback = 15;
           hitstunFrames = 12;
           break;
@@ -5872,7 +5872,7 @@ useEffect(() => {
                     className={`text-4xl ${hasAchievement("online:monochrome") ? "" : "grayscale opacity-25"}`}
                     style={hasAchievement("online:monochrome") ? { color: "#facc15", filter: "drop-shadow(0 0 12px rgba(250,204,21,0.9))" } : {}}
                   >
-                    ✦
+                    ⭐
                   </div>
                 </div>
               </div>
