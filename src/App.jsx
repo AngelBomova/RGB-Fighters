@@ -5858,19 +5858,17 @@ useEffect(() => {
                 </div>
                 <div
                   className={`rounded-3xl border p-5 flex items-center justify-between gap-4 ${
-                    hasAchievement("online:monochrome") || hasAchievement("ladder:monochrome:easy") || hasAchievement("ladder:monochrome:medium") || hasAchievement("ladder:monochrome:hard")
+                    hasAchievement("online:monochrome")
                       ? "border-yellow-300 bg-yellow-50"
                       : "border-gray-100 bg-gray-50"
                   }`}
-                  style={hasAchievement("online:monochrome") || hasAchievement("ladder:monochrome:easy") || hasAchievement("ladder:monochrome:medium") || hasAchievement("ladder:monochrome:hard") ? { boxShadow: "0 0 24px rgba(250,204,21,0.35)" } : {}}
                 >
                   <div>
                     <div className="text-lg text-gray-900 font-light">Monochrome Slayer</div>
-                    <div className="text-xs text-gray-500 font-light">Beat Monochrome in 1v1 Online or Ladder</div>
+                    <div className="text-xs text-gray-500 font-light">Beat Monochrome in 1v1 Online</div>
                   </div>
                   <div
-                    className={`text-4xl ${hasAchievement("online:monochrome") || hasAchievement("ladder:monochrome:easy") || hasAchievement("ladder:monochrome:medium") || hasAchievement("ladder:monochrome:hard") ? "" : "grayscale opacity-25"}`}
-                    style={hasAchievement("online:monochrome") || hasAchievement("ladder:monochrome:easy") || hasAchievement("ladder:monochrome:medium") || hasAchievement("ladder:monochrome:hard") ? { color: "#facc15", filter: "drop-shadow(0 0 12px rgba(250,204,21,0.9))" } : {}}
+                    className={`text-4xl ${hasAchievement("online:monochrome") ? "" : "grayscale opacity-25"}`}
                   >
                     ⭐
                   </div>
