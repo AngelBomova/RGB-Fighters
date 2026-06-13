@@ -5859,7 +5859,7 @@ useEffect(() => {
                 <div
                   className={`rounded-3xl border p-5 flex items-center justify-between gap-4 ${
                     hasAchievement("online:monochrome")
-                      ? "border-yellow-300 bg-yellow-50"
+                      ? ""
                       : "border-gray-100 bg-gray-50"
                   }`}
                 >
