@@ -51,6 +51,10 @@ export async function getLeaderboard() {
   return { wins, wlr };
 }
 
+export async function getRank(username) {
+  return request(`/api/leaderboard/rank/${encodeURIComponent(username)}`);
+}
+
 export async function getAchievements(token) {
   return request('/api/achievements', {
     headers: { Authorization: `Bearer ${token}` },
@@ -68,4 +72,4 @@ export async function unlockLadderAchievement(token, color, difficulty) {
   });
 }
 
-export default { register, login, me, getLeaderboard, getAchievements, unlockLadderAchievement };
+export default { register, login, me, getLeaderboard, getRank, getAchievements, unlockLadderAchievement };

@@ -101,7 +101,11 @@ async function initSqlite() {
         if (s.includes('select') && s.includes('from users') && s.includes('where username')) {
           const username = params[0];
           const found = data.users.find((u) => u.username === username);
-          return { rows: found ? [toRow(found)] : [] };
+          const rows = found ? [toRow(found)] : [];
+          if (s.includes(' wlr')) {
+            return { rows: rows.map((u) => ({ ...u, wlr: (u.wins || 0) / Math.max(1, u.losses || 0) })) };
+          }
+          return { rows };
         }
 
         if (s.includes('select') && s.includes('from users') && s.includes('where id')) {
@@ -143,6 +147,13 @@ async function initSqlite() {
         }
         if (s.includes('order by wins') && s.includes('limit')) {
           const rows = data.users.map(toRow).sort((a, b) => (b.wins || 0) - (a.wins || 0)).slice(0, 10);
+          return { rows };
+        }
+        if (s.includes('select') && s.includes('from users')) {
+          const rows = data.users.map(toRow);
+          if (s.includes(' wlr')) {
+            return { rows: rows.map((u) => ({ ...u, wlr: (u.wins || 0) / Math.max(1, u.losses || 0) })) };
+          }
           return { rows };
         }
 

@@ -29,6 +29,7 @@ function FighterGame() {
 
   const [user, setUser] = useState(null);
   const [achievements, setAchievements] = useState([]);
+  const [userRank, setUserRank] = useState(null);
   const [token, setToken] = useState(() => {
     try {
       return localStorage.getItem('rgb_token');
@@ -81,6 +82,20 @@ function FighterGame() {
       setUser(updatedUser);
     }).catch(() => {});
   };
+
+  useEffect(() => {
+    if (!user?.username) {
+      setUserRank(null);
+      return;
+    }
+    let mounted = true;
+    api.getRank(user.username).then((rank) => {
+      if (mounted) setUserRank(rank);
+    }).catch(() => {
+      if (mounted) setUserRank(null);
+    });
+    return () => (mounted = false);
+  }, [user?.username, user?.wins, user?.losses]);
 
   const socketRef = useRef(null);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
@@ -947,6 +962,8 @@ const toggleFullscreen = async () => {
   const randPick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const randStage = () => randPick(["default", "recursion", "sky", "hourglass", "bottom"]);
   const FIGHTER_COLORS = ["red", "blue", "green", "black", "white", "purple", "yellow", "orange"];
+  const SECRET_FIGHTER_COLORS = ["brown", "pink"];
+  const ONLINE_FIGHTER_COLORS = [...FIGHTER_COLORS, ...SECRET_FIGHTER_COLORS];
   const RAINBOW_COLORS = ["#ef4444", "#f97316", "#facc15", "#22c55e", "#3b82f6", "#a855f7", "#f8fafc"];
   const MONOCHROME_COLORS = ["#020617", "#4b5563", "#9ca3af", "#f8fafc"];
   const LADDER_TOTAL_MATCHES = FIGHTER_COLORS.length + 1;
@@ -956,6 +973,24 @@ const toggleFullscreen = async () => {
   const isRainbowUser = (name) => String(name || "") === "Rainbow";
   const isMonochromeUser = (name) => String(name || "") === "Monochrome";
   const getLockedSecretColor = (name) => isRainbowUser(name) ? "rainbow" : isMonochromeUser(name) ? "monochrome" : null;
+  const OFFLINE_ACHIEVEMENT_KEYS = FIGHTER_COLORS.flatMap((color) => ["easy", "medium", "hard"].map((difficulty) => `ladder:${color}:${difficulty}`));
+  const hasAchievementKey = (key) => achievements.includes(key);
+  const hasAllOfflineAchievements = OFFLINE_ACHIEVEMENT_KEYS.every(hasAchievementKey);
+  const hasBrownUnlocked = !!user && hasAllOfflineAchievements;
+  const hasPinkUnlocked = !!user && hasAllOfflineAchievements && (Number(user?.wins) || 0) >= 100 && hasAchievementKey("online:rainbow") && hasAchievementKey("online:monochrome");
+  const canUseColor = (color) => color !== "brown" && color !== "pink" ? true : color === "brown" ? hasBrownUnlocked : hasPinkUnlocked;
+  const lockTextForColor = (color) => color === "brown"
+    ? "Complete Every Offline Achievement To Unlock"
+    : color === "pink"
+    ? "Complete Every Achievement To Unlock"
+    : "";
+  const selectableColorsForCurrentMode = () => (mode === "online" || mode === "practice" ? ONLINE_FIGHTER_COLORS : FIGHTER_COLORS);
+  const formatWlrValue = (wins, losses, fallback) => {
+    const ratio = typeof fallback !== "undefined" ? Number(fallback) : (Number(wins) || 0) / Math.max(1, Number(losses) || 0);
+    return Number.isFinite(ratio) ? ratio.toFixed(2) : "0.00";
+  };
+  const currentRecord = `${Number(user?.wins) || 0}W - ${Number(user?.losses) || 0}L`;
+  const currentWlr = formatWlrValue(user?.wins, user?.losses, userRank?.wlr);
 
   useEffect(() => {
     if (mode !== "ladder" || !gameOver || matchWinnerText !== "Team 1" || ladderIndex !== LADDER_BOSS_INDEX) return;
@@ -990,6 +1025,10 @@ const toggleFullscreen = async () => {
       ? "Turret & Summon"
       : c === "monochrome"
       ? "Homing Blast & Floor Wave"
+      : c === "brown"
+      ? "Phase Shot & Armor"
+      : c === "pink"
+      ? "Plus Shot & Parry"
       : "Triple Fire & Speed Charge";
   const shuffle = (arr) => {
     const a = [...arr];
@@ -1285,6 +1324,15 @@ const toggleFullscreen = async () => {
         spearStunTimer: p.spearStunTimer,
         monochromeStunned: p.monochromeStunned,
         monochromeStunTimer: p.monochromeStunTimer,
+        pinkParrying: p.pinkParrying,
+        pinkParryTimer: p.pinkParryTimer,
+        pinkParryDucking: p.pinkParryDucking,
+        brownPhasing: p.brownPhasing,
+        brownStunned: p.brownStunned,
+        brownStunTimer: p.brownStunTimer,
+        brownCharging: p.brownCharging,
+        brownChargeTimer: p.brownChargeTimer,
+        brownInvulnTimer: p.brownInvulnTimer,
         reflecting: p.reflecting,
         reflectTimer: p.reflectTimer,
         punchCooldown: p.punchCooldown,
@@ -1314,6 +1362,7 @@ const toggleFullscreen = async () => {
         speed: proj.speed,
         reflected: proj.reflected,
         trackXOnly: proj.trackXOnly,
+        phaseOwnerId: proj.phaseOwner?.id || proj.phaseOwnerId,
       })),
     };
   };
@@ -1372,6 +1421,7 @@ const toggleFullscreen = async () => {
     projectiles.current = (snapshot.projectiles || []).map((proj) => ({
       ...proj,
       owner: null,
+      phaseOwner: proj.phaseOwnerId ? (fightersRef.current || []).find((p) => p.id === proj.phaseOwnerId) || null : null,
     }));
   };
 
@@ -1503,6 +1553,11 @@ const toggleFullscreen = async () => {
     ladderAchievementSentRef.current = "";
 
     resetAll();
+
+    if (m === "login") {
+      setMenuStep("login");
+      return;
+    }
 
     if (m === "online") {
       setMenuStep("comingsoon");
@@ -1636,6 +1691,10 @@ const toggleFullscreen = async () => {
             return { hex: "#ec4899", name: "Rainbow", type: "rainbow" };
           case "monochrome":
             return { hex: "#6b7280", name: "Monochrome", type: "monochrome" };
+          case "brown":
+            return { hex: "#92400e", name: "Brown", type: "brown" };
+          case "pink":
+            return { hex: "#ec4899", name: "Pink", type: "pink" };
           default:
             return { hex: "#ef4444", name: "Red", type: "fire" };
         }
@@ -1822,6 +1881,15 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         spearStunTimer: 0,
         monochromeStunned: false,
         monochromeStunTimer: 0,
+        pinkParrying: false,
+        pinkParryTimer: 0,
+        pinkParryDucking: false,
+        brownPhasing: false,
+        brownStunned: false,
+        brownStunTimer: 0,
+        brownCharging: false,
+        brownChargeTimer: 0,
+        brownInvulnTimer: 0,
         reflecting: false,
         reflectTimer: 0,
         punchCooldown: 0,
@@ -2008,6 +2076,15 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           p.spearStunTimer = 0;
           p.monochromeStunned = false;
           p.monochromeStunTimer = 0;
+          p.pinkParrying = false;
+          p.pinkParryTimer = 0;
+          p.pinkParryDucking = false;
+          p.brownPhasing = false;
+          p.brownStunned = false;
+          p.brownStunTimer = 0;
+          p.brownCharging = false;
+          p.brownChargeTimer = 0;
+          p.brownInvulnTimer = 0;
           p.reflecting = false;
           p.reflectTimer = 0;
           p.speed = 5;
@@ -2054,6 +2131,8 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         def.frozenTimer = 0;
         def.monochromeStunned = false;
         def.monochromeStunTimer = 0;
+        def.brownStunned = false;
+        def.brownStunTimer = 0;
       }
     };
 
@@ -2131,8 +2210,9 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
       if (attackType === "dash") return false;
       if (attackType === "poisonorb") return false;
 
-      const h = attackHeightOverride ?? attacker.attackHeight;
+      const h = attackHeightOverride ?? attacker?.attackHeight;
 
+      if (h === "unblockable") return false;
       if (h === "low") return defender.ducking;
       if (h === "overhead") return !defender.ducking;
       if (h === "mid") return true;
@@ -2142,6 +2222,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
 
     const applyDamage = (attacker, defender, attackType, extra = {}) => {
       if (!defender.alive) return 0;
+      if (defender.brownPhasing) return 0;
       if (defender.type === "rainbow" && defender.rainbowTurretTimer > 0 && !extra.ignoreRainbowInvulnerable) return 0;
       if (attackType === "iceball" && defender.frozen) return 0;
 
@@ -2224,6 +2305,17 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         case "monochromewave":
           damage = 10;
           knockback = 3;
+          hitstunFrames = 10;
+          freezeFrames = 180;
+          break;
+        case "pinkplus":
+          damage = 5;
+          knockback = 7;
+          hitstunFrames = 10;
+          break;
+        case "brownshift":
+          damage = 5;
+          knockback = 4;
           hitstunFrames = 10;
           freezeFrames = 180;
           break;
@@ -2315,6 +2407,12 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         hitstunFrames += 30;
       }
 
+      if (defender.brownCharging) {
+        defender.brownCharging = false;
+        defender.brownChargeTimer = 0;
+        hitstunFrames += 30;
+      }
+
       if (defender.reflecting) {
         defender.reflecting = false;
         defender.reflectTimer = 0;
@@ -2325,7 +2423,49 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         defender.spearLocked = false;
       }
 
+      const attackHeight = extra.attackHeight ?? attacker.attackHeight ?? "";
+      const pinkParryWorks =
+        defender.type === "pink" &&
+        defender.pinkParrying &&
+        defender.pinkParryTimer > 0 &&
+        !extra.isProjectile &&
+        (
+          defender.pinkParryDucking
+            ? ["unblockable", "low", "mid"].includes(attackHeight)
+            : ["unblockable", "overhead", "high", "mid"].includes(attackHeight)
+        );
+
+      if (pinkParryWorks) {
+        defender.pinkParrying = false;
+        defender.pinkParryTimer = 0;
+        attacker.health -= 7;
+        attacker.vx = (attacker.x < defender.x ? -1 : 1) * 8;
+        attacker.vy = -25;
+        attacker.grounded = false;
+        attacker.hitstun = true;
+        attacker.hitstunTimer = 18;
+        attacker.attacking = false;
+        attacker.attackTimer = 0;
+        attacker.attackType = "";
+        attacker.attackHeight = "";
+        attacker.hitFlashTimer = 14;
+        attacker.hitFlashColor = "#ec4899";
+        playSfx("block");
+        markKOIfNeeded(attacker);
+        return 0;
+      }
+
       const blocked = canBlockAttack(attacker, defender, attackType, extra.attackHeight ?? null);
+
+      if (!blocked && defender.brownInvulnTimer > 0) {
+        damage = 0;
+        freezeFrames = 0;
+        disableBlock = false;
+        disableSpecial = false;
+        slowFrames = 0;
+        applyPoisonTicks = 0;
+        applyJumpDisable = 0;
+      }
 
       if (blocked) {
         damage = Math.floor(damage * 0.25);
@@ -2348,6 +2488,8 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           defender.frozenTimer = freezeFrames;
           defender.monochromeStunned = attackType === "monochromewave";
           defender.monochromeStunTimer = attackType === "monochromewave" ? freezeFrames : 0;
+          defender.brownStunned = attackType === "brownshift";
+          defender.brownStunTimer = attackType === "brownshift" ? freezeFrames : 0;
         }
         if (disableBlock) {
           defender.blockDisabled = true;
@@ -2389,7 +2531,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
       defender.health -= damage;
       if (!blocked && damage > 0) {
   defender.hitFlashTimer = 14;
-  defender.hitFlashColor = attacker.lightColor || attacker.color || "rgba(255,255,255,0.9)";
+  defender.hitFlashColor = attacker?.lightColor || attacker?.color || "rgba(255,255,255,0.9)";
 
   if (!defender.isHuman && !defender.dummy) {
     defender.aiPressureTimer = 100;
@@ -2398,7 +2540,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
   }
 }
 
-      const dir = extra.knockbackDir ?? attacker.facing ?? 1;
+      const dir = extra.knockbackDir ?? attacker?.facing ?? 1;
       defender.vx = dir * knockback;
 
       if (launchUp && !blocked) {
@@ -2571,23 +2713,22 @@ const beginMonochromeMissile = (fighter) => {
 };
 
 const beginMonochromeWave = (fighter) => {
-  if (!fighter.canSpecial2 || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging) return false;
-  const target = getNearestEnemy(fighter);
-  if (!target) return false;
+  if (!fighter.canSpecial2 || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging || fighter.pinkParrying || fighter.brownPhasing || fighter.brownCharging) return false;
 
   stopDefense(fighter);
+  const startX = fighter.x + (fighter.facing > 0 ? fighter.width + 14 : -14);
+  const startY = fighter.y + fighter.height / 2;
   projectiles.current.push({
-    x: target.x + target.width / 2,
-    y: groundLevel + 34,
-    vx: 0,
-    vy: -13,
+    x: startX,
+    y: startY,
+    vx: fighter.facing * 7.5,
+    vy: 0,
     owner: fighter,
     team: fighter.team,
     type: "monochromewave",
-    attackHeight: "low",
+    attackHeight: "unblockable",
     color: "#f8fafc",
-    radius: 52,
-    trackXOnly: true,
+    radius: 16,
   });
 
   fighter.canSpecial2 = false;
@@ -2598,8 +2739,118 @@ const beginMonochromeWave = (fighter) => {
   return true;
 };
 
+const beginPinkPlus = (fighter) => {
+  if (!fighter.canProjectile || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging || fighter.pinkParrying || fighter.brownPhasing || fighter.brownCharging) return false;
+
+  stopDefense(fighter);
+  const cx = fighter.x + fighter.width / 2;
+  const cy = fighter.y + fighter.height / 2;
+  const speed = 8.5;
+  [
+    { vx: speed, vy: 0, attackHeight: "high" },
+    { vx: -speed, vy: 0, attackHeight: "high" },
+    { vx: 0, vy: -speed, attackHeight: "low" },
+    { vx: 0, vy: speed, attackHeight: "overhead" },
+  ].forEach((shot) => {
+    projectiles.current.push({
+      x: cx,
+      y: cy,
+      vx: shot.vx,
+      vy: shot.vy,
+      owner: fighter,
+      team: fighter.team,
+      type: "pinkplus",
+      attackHeight: shot.attackHeight,
+      color: "#ec4899",
+      radius: 9,
+    });
+  });
+
+  fighter.canProjectile = false;
+  playSfx("purple_damage");
+  setManagedTimeout(() => {
+    fighter.canProjectile = true;
+  }, 3000);
+  return true;
+};
+
+const beginPinkParry = (fighter) => {
+  if (!fighter.canSpecial2 || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging || fighter.pinkParrying || fighter.brownPhasing || fighter.brownCharging) return false;
+
+  fighter.vx = 0;
+  fighter.blocking = false;
+  fighter.attacking = false;
+  fighter.attackTimer = 0;
+  fighter.attackType = "";
+  fighter.attackHeight = "";
+  fighter.pinkParrying = true;
+  fighter.pinkParryTimer = 30;
+  fighter.pinkParryDucking = !!fighter.ducking;
+  fighter.canSpecial2 = false;
+  playSfx("block");
+  setManagedTimeout(() => {
+    fighter.canSpecial2 = true;
+  }, 1000);
+  return true;
+};
+
+const landBrownShift = (fighter, x) => {
+  if (!fighter) return;
+  fighter.brownPhasing = false;
+  fighter.x = Math.max(0, Math.min(WORLD_W - fighter.width, x));
+  fighter.y = Math.min(fighter.y, groundLevel - fighter.height);
+  fighter.vx = 0;
+  fighter.vy = 0;
+  fighter.grounded = true;
+};
+
+const beginBrownShift = (fighter) => {
+  if (!fighter.canProjectile || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging || fighter.pinkParrying || fighter.brownPhasing || fighter.brownCharging) return false;
+
+  stopDefense(fighter);
+  fighter.brownPhasing = true;
+  fighter.vx = 0;
+  fighter.vy = 0;
+  projectiles.current.push({
+    x: fighter.x + fighter.width / 2,
+    y: fighter.y + fighter.height / 2,
+    vx: fighter.facing * 12,
+    vy: 0,
+    owner: fighter,
+    phaseOwner: fighter,
+    phaseOwnerId: fighter.id,
+    team: fighter.team,
+    type: "brownshift",
+    attackHeight: "mid",
+    color: "#92400e",
+    radius: 10,
+  });
+
+  fighter.canProjectile = false;
+  playSfx("poisonball");
+  setManagedTimeout(() => {
+    fighter.canProjectile = true;
+  }, 5000);
+  return true;
+};
+
+const beginBrownArmorCharge = (fighter) => {
+  if (!fighter.canSpecial2 || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging || fighter.pinkParrying || fighter.brownPhasing || fighter.brownCharging || fighter.brownInvulnTimer > 0) return false;
+
+  stopDefense(fighter);
+  fighter.vx = 0;
+  fighter.brownCharging = true;
+  fighter.brownChargeTimer = 0;
+  fighter.canSpecial2 = false;
+  playSfx("charge_start");
+  setManagedTimeout(() => {
+    fighter.canSpecial2 = true;
+  }, 20000);
+  return true;
+};
+
   const beginMelee = (ai, attackType) => {
-    if (ai.attacking || ai.hitstun || ai.frozen) return false;
+    if (ai.attacking || ai.hitstun || ai.frozen || ai.pinkParrying || ai.brownPhasing || ai.brownCharging) return false;
 
     stopDefense(ai);
     ai.vx = 0;
@@ -2652,7 +2903,9 @@ const beginMonochromeWave = (fighter) => {
 const beginProjectile = (ai) => {
   if (ai.type === "rainbow") return beginRainbowTurret(ai);
   if (ai.type === "monochrome") return beginMonochromeMissile(ai);
-  if (!ai.canProjectile || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging) return false;
+  if (ai.type === "pink") return beginPinkPlus(ai);
+  if (ai.type === "brown") return beginBrownShift(ai);
+  if (!ai.canProjectile || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging || ai.pinkParrying || ai.brownPhasing || ai.brownCharging) return false;
 
   const projX = ai.x + (ai.facing > 0 ? ai.width : 0);
   const projY = ai.y + 25;
@@ -3325,6 +3578,27 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
   }
 
   if (
+    ai.type === "pink" &&
+    ai.canSpecial2 &&
+    !ai.specialDisabled &&
+    abs < getAiSettings(ai).meleeRange + 12 &&
+    rand() < getAiSettings(ai).blockChance
+  ) {
+    if (beginPinkParry(ai)) return;
+  }
+
+  if (
+    ai.type === "brown" &&
+    ai.canSpecial2 &&
+    !ai.specialDisabled &&
+    ai.brownInvulnTimer <= 0 &&
+    abs < 260 &&
+    rand() < getAiSettings(ai).specialChance
+  ) {
+    if (beginBrownArmorCharge(ai)) return;
+  }
+
+  if (
     ai.type === "psychic" &&
     ai.canSpecial2 &&
     !ai.specialDisabled &&
@@ -3517,9 +3791,9 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
 };
 
     const drawHealthBarSmall = (label, health, x, y, color, roundsWon, alignRight = false, maxHealth = 100) => {
-      const barW = 250;
-      const barH = 12;
-      const boxH = 45;
+      const barW = 220;
+      const barH = 10;
+      const boxH = 38;
 
       ctx.fillStyle = "rgba(255,255,255,0.92)";
       ctx.fillRect(x, y, barW, boxH);
@@ -3529,25 +3803,25 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
 
       const hpText = `${label}  ${Math.max(0, Math.floor(health))} HP`;
       ctx.fillStyle = "#111827";
-      let labelFontSize = 11;
+      let labelFontSize = 10;
       ctx.font = `${labelFontSize}px Arial`;
       let tw = ctx.measureText(hpText).width;
-      while (tw > barW - 20 && labelFontSize > 8) {
+      while (tw > barW - 16 && labelFontSize > 7) {
         labelFontSize--;
         ctx.font = `${labelFontSize}px Arial`;
         tw = ctx.measureText(hpText).width;
       }
-      ctx.fillText(hpText, alignRight ? x + barW - 10 - tw : x + 10, y + 13);
+      ctx.fillText(hpText, alignRight ? x + barW - 8 - tw : x + 8, y + 11);
 
       ctx.fillStyle = "#e5e7eb";
-ctx.fillRect(x + 10, y + 18, barW - 20, barH);
+ctx.fillRect(x + 8, y + 16, barW - 16, barH);
 ctx.strokeStyle = "#000000";
 ctx.lineWidth = 2;
-ctx.strokeRect(x + 10, y + 18, barW - 20, barH);
+ctx.strokeRect(x + 8, y + 16, barW - 16, barH);
 
-const hpW = ((Math.max(0, Math.min(maxHealth, health)) / maxHealth) * (barW - 20)) | 0;
+const hpW = ((Math.max(0, Math.min(maxHealth, health)) / maxHealth) * (barW - 16)) | 0;
 if (color === "rainbow" || color === "monochrome") {
-  const barGradient = ctx.createLinearGradient(x + 10, y + 18, x + barW - 10, y + 18);
+  const barGradient = ctx.createLinearGradient(x + 8, y + 16, x + barW - 8, y + 16);
   const colors = color === "rainbow" ? RAINBOW_COLORS : MONOCHROME_COLORS;
   colors.forEach((barColor, index) => {
     barGradient.addColorStop(index / (colors.length - 1), barColor);
@@ -3556,22 +3830,22 @@ if (color === "rainbow" || color === "monochrome") {
 } else {
   ctx.fillStyle = color;
 }
-ctx.fillRect(x + 10, y + 18, hpW, barH);
+ctx.fillRect(x + 8, y + 16, hpW, barH);
 
 if (hpW > 0) {
   ctx.strokeStyle = "#000000";
   ctx.lineWidth = 1.5;
-  ctx.strokeRect(x + 10, y + 18, hpW, barH);
+  ctx.strokeRect(x + 8, y + 16, hpW, barH);
 }
 
       if (roundsWon != null) {
         for (let i = 0; i < 2; i++) {
-  const coinX = x + barW - 16 - i * 16;
-  const coinY = y + 36;
+  const coinX = x + barW - 14 - i * 14;
+  const coinY = y + 30;
 
   ctx.fillStyle = i < roundsWon ? "#fbbf24" : "#e5e7eb";
   ctx.beginPath();
-  ctx.arc(coinX, coinY, 5, 0, Math.PI * 2);
+  ctx.arc(coinX, coinY, 4.5, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.strokeStyle = "#000000";
@@ -3582,8 +3856,8 @@ if (hpW > 0) {
     };
 
     const drawRoundTimer = (secondsLeft) => {
-      const boxW = 110;
-      const boxH = 32;
+      const boxW = 82;
+      const boxH = 28;
       const x = WORLD_W / 2 - boxW / 2;
       const y = 18;
 
@@ -3595,10 +3869,10 @@ if (hpW > 0) {
       ctx.strokeRect(x, y, boxW, boxH);
 
       ctx.fillStyle = "#111827";
-      ctx.font = "bold 18px Arial";
+      ctx.font = "bold 16px Arial";
       const t = String(secondsLeft).padStart(2, "0");
       const textW = ctx.measureText(t).width;
-      ctx.fillText(t, x + boxW / 2 - textW / 2, y + 22);
+      ctx.fillText(t, x + boxW / 2 - textW / 2, y + 20);
     };
 
     const drawCountdown = (value) => {
@@ -3742,6 +4016,15 @@ if (hpW > 0) {
         p.spearStunTimer = 0;
         p.monochromeStunned = false;
         p.monochromeStunTimer = 0;
+        p.pinkParrying = false;
+        p.pinkParryTimer = 0;
+        p.pinkParryDucking = false;
+        p.brownPhasing = false;
+        p.brownStunned = false;
+        p.brownStunTimer = 0;
+        p.brownCharging = false;
+        p.brownChargeTimer = 0;
+        p.brownInvulnTimer = 0;
         p.reflecting = false;
         p.reflectTimer = 0;
         p.speed = 5;
@@ -3813,6 +4096,15 @@ if (hpW > 0) {
         p.spearStunTimer = 0;
         p.monochromeStunned = false;
         p.monochromeStunTimer = 0;
+        p.pinkParrying = false;
+        p.pinkParryTimer = 0;
+        p.pinkParryDucking = false;
+        p.brownPhasing = false;
+        p.brownStunned = false;
+        p.brownStunTimer = 0;
+        p.brownCharging = false;
+        p.brownChargeTimer = 0;
+        p.brownInvulnTimer = 0;
         p.reflecting = false;
         p.reflectTimer = 0;
         p.speed = 5;
@@ -3831,7 +4123,7 @@ if (hpW > 0) {
       if (pausedRef.current && mode !== "online") return;
       if (roundPhaseRef.current !== "fight") return;
       if (p.dummy) return;
-      if (p.frozen || p.hitstun || p.spearStunned) return;
+      if (p.frozen || p.hitstun || p.spearStunned || p.brownStunned) return;
 
       const binds = p.bindsRef?.current;
       const isOnline = mode === "online" && onlineLocalTeam != null;
@@ -3871,10 +4163,10 @@ if (hpW > 0) {
         }
       }
 
-      if (p.spearLocked || p.reflecting || p.purpleCharging || p.orangeCharging) {
+      if (p.spearLocked || p.reflecting || p.purpleCharging || p.orangeCharging || p.pinkParrying || p.brownPhasing || p.brownCharging) {
         p.vx = 0;
         p.blocking = false;
-        p.ducking = false;
+        if (!p.pinkParrying) p.ducking = false;
         p.attacking = false;
         p.attackTimer = 0;
         p.attackType = "";
@@ -4019,6 +4311,12 @@ if (hpW > 0) {
           } else if (p.type === "monochrome") {
             if (beginMonochromeMissile(p)) clearHeld("special1");
             return;
+          } else if (p.type === "pink") {
+            if (beginPinkPlus(p)) clearHeld("special1");
+            return;
+          } else if (p.type === "brown") {
+            if (beginBrownShift(p)) clearHeld("special1");
+            return;
           } else if (p.type === "psychic") {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 8, owner: p, team: p.team, type: "purpleball", attackHeight: "high", color: "#a855f7", radius: 8 });
             playSfx("purple_damage");
@@ -4114,6 +4412,10 @@ if (hpW > 0) {
               if (beginRainbowSummon(p)) clearHeld("special2");
             } else if (p.type === "monochrome") {
               if (beginMonochromeWave(p)) clearHeld("special2");
+            } else if (p.type === "pink") {
+              if (beginPinkParry(p)) clearHeld("special2");
+            } else if (p.type === "brown") {
+              if (beginBrownArmorCharge(p)) clearHeld("special2");
             } else if (p.type === "light") {
               const target = getNearestEnemy(p);
               if (target) {
@@ -4225,6 +4527,53 @@ if (hpW > 0) {
         }
       }
 
+      if (p.brownCharging) {
+        p.brownChargeTimer++;
+        p.vx = 0;
+        p.blocking = false;
+        p.ducking = false;
+        p.attacking = false;
+        p.attackTimer = 0;
+        p.attackType = "";
+        p.attackHeight = "";
+        if (p.brownChargeTimer >= 60) {
+          p.brownCharging = false;
+          p.brownChargeTimer = 0;
+          p.brownInvulnTimer = 300;
+          playSfx("purple_boost");
+        }
+      }
+
+      if (p.pinkParrying) {
+        p.pinkParryTimer--;
+        p.vx = 0;
+        p.blocking = false;
+        p.ducking = !!p.pinkParryDucking;
+        p.attacking = false;
+        p.attackTimer = 0;
+        p.attackType = "";
+        p.attackHeight = "";
+        if (p.pinkParryTimer <= 0) {
+          p.pinkParrying = false;
+          p.pinkParryTimer = 0;
+        }
+      }
+
+      if (p.brownPhasing) {
+        p.vx = 0;
+        p.vy = 0;
+        p.blocking = false;
+        p.ducking = false;
+        p.attacking = false;
+        p.attackTimer = 0;
+        p.attackType = "";
+        p.attackHeight = "";
+        updateHitboxes(p);
+        return;
+      }
+
+      if (p.brownInvulnTimer > 0) p.brownInvulnTimer--;
+
       if (p.rainbowTurretTimer > 0) {
         p.rainbowTurretTimer--;
         p.rainbowTurretShotTimer--;
@@ -4267,6 +4616,19 @@ if (hpW > 0) {
         if (p.spearStunTimer <= 0) {
           p.spearStunned = false;
           p.spearStunTimer = 0;
+        }
+      }
+
+      if (p.brownStunned && !p.frozen) {
+        p.brownStunTimer--;
+        p.vx = 0;
+        p.attacking = false;
+        p.attackTimer = 0;
+        p.attackType = "";
+        p.attackHeight = "";
+        if (p.brownStunTimer <= 0) {
+          p.brownStunned = false;
+          p.brownStunTimer = 0;
         }
       }
 
@@ -4334,7 +4696,7 @@ if (p.aiBlockHoldTimer > 0) {
       if (p.poisoned && p.poisonTicksLeft > 0) {
         p.poisonTickTimer--;
         if (p.poisonTickTimer <= 0) {
-          if (!(p.type === "rainbow" && p.rainbowTurretTimer > 0)) p.health -= 1;
+          if (!(p.type === "rainbow" && p.rainbowTurretTimer > 0) && p.brownInvulnTimer <= 0) p.health -= 1;
           p.poisonTicksLeft--;
           p.poisonTickTimer = 60;
           if (p.poisonTicksLeft <= 0) {
@@ -4347,11 +4709,14 @@ if (p.aiBlockHoldTimer > 0) {
       if (p.frozen) {
         p.frozenTimer--;
         if (p.monochromeStunTimer > 0) p.monochromeStunTimer--;
+        if (p.brownStunTimer > 0) p.brownStunTimer--;
         if (p.frozenTimer <= 0) {
           p.frozen = false;
           p.frozenTimer = 0;
           p.monochromeStunned = false;
           p.monochromeStunTimer = 0;
+          p.brownStunned = false;
+          p.brownStunTimer = 0;
         }
         p.vx = 0;
       }
@@ -4572,20 +4937,41 @@ if (p.aiBlockHoldTimer > 0) {
       }
 
       if (proj.type === "monochromewave") {
-        const gradient = ctx.createLinearGradient(proj.x, proj.y + proj.radius, proj.x, proj.y - proj.radius * 1.8);
+        const gradient = ctx.createLinearGradient(proj.x - proj.radius * 1.7, proj.y, proj.x + proj.radius * 1.7, proj.y);
         gradient.addColorStop(0, "rgba(2,6,23,0.95)");
         gradient.addColorStop(0.45, "rgba(156,163,175,0.78)");
         gradient.addColorStop(1, "rgba(248,250,252,0.9)");
         ctx.fillStyle = gradient;
         ctx.beginPath();
-        ctx.ellipse(proj.x, proj.y, proj.radius * 1.35, proj.radius * 0.65, 0, 0, Math.PI * 2);
+        ctx.ellipse(proj.x, proj.y, proj.radius * 1.8, proj.radius * 0.8, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.globalAlpha = 0.85;
-        ctx.fillRect(proj.x - proj.radius * 0.75, proj.y - proj.radius * 1.55, proj.radius * 1.5, proj.radius * 1.55);
-        ctx.globalAlpha = 1;
         ctx.strokeStyle = "#020617";
         ctx.lineWidth = 3;
-        ctx.strokeRect(proj.x - proj.radius * 0.75, proj.y - proj.radius * 1.55, proj.radius * 1.5, proj.radius * 1.55);
+        ctx.beginPath();
+        ctx.ellipse(proj.x, proj.y, proj.radius * 1.8, proj.radius * 0.8, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
+
+      if (proj.type === "pinkplus") {
+        ctx.fillStyle = "#ec4899";
+        ctx.strokeStyle = "#831843";
+        ctx.lineWidth = 2;
+        ctx.fillRect(proj.x - 3, proj.y - proj.radius, 6, proj.radius * 2);
+        ctx.fillRect(proj.x - proj.radius, proj.y - 3, proj.radius * 2, 6);
+        ctx.strokeRect(proj.x - 3, proj.y - proj.radius, 6, proj.radius * 2);
+        ctx.strokeRect(proj.x - proj.radius, proj.y - 3, proj.radius * 2, 6);
+        ctx.restore();
+        return;
+      }
+
+      if (proj.type === "brownshift") {
+        ctx.fillStyle = "#92400e";
+        ctx.fillRect(proj.x - 10, proj.y - 15, 20, 30);
+        ctx.strokeStyle = "#1c0a00";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(proj.x - 10, proj.y - 15, 20, 30);
         ctx.restore();
         return;
       }
@@ -4618,6 +5004,7 @@ if (p.aiBlockHoldTimer > 0) {
 
     const drawFighter = (p) => {
       if (!p.alive) return;
+      if (p.brownPhasing) return;
       ctx.save();
 
       const drawHeight = p.ducking ? p.height * 0.6 : p.height;
@@ -4696,6 +5083,14 @@ if (p.aiBlockHoldTimer > 0) {
         ctx.globalAlpha = 1;
       }
 
+      if (p.brownStunned) {
+        ctx.globalAlpha = 0.75;
+        ctx.strokeStyle = "#92400e";
+        ctx.lineWidth = 5;
+        ctx.strokeRect(p.x - 8, drawY - 8, p.width + 16, drawHeight + 16);
+        ctx.globalAlpha = 1;
+      }
+
       if (p.purpleCharging) {
         ctx.globalAlpha = 0.62;
         ctx.fillStyle = "#a855f7";
@@ -4709,6 +5104,31 @@ if (p.aiBlockHoldTimer > 0) {
         ctx.fillStyle = "#fb923c";
         const chargeSize = Math.min(p.orangeChargeTimer / 3, 20);
         ctx.fillRect(p.x - chargeSize / 2, drawY - chargeSize / 2, p.width + chargeSize, drawHeight + chargeSize);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.brownCharging) {
+        ctx.globalAlpha = 0.62;
+        ctx.strokeStyle = "#92400e";
+        ctx.lineWidth = 6;
+        const chargeSize = Math.min(p.brownChargeTimer / 3, 20);
+        ctx.strokeRect(p.x - chargeSize / 2, drawY - chargeSize / 2, p.width + chargeSize, drawHeight + chargeSize);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.brownInvulnTimer > 0) {
+        ctx.globalAlpha = 0.55;
+        ctx.strokeStyle = "#92400e";
+        ctx.lineWidth = 5;
+        ctx.strokeRect(p.x - 10, drawY - 10, p.width + 20, drawHeight + 20);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.pinkParrying) {
+        ctx.globalAlpha = 0.8;
+        ctx.strokeStyle = "#ec4899";
+        ctx.lineWidth = 6;
+        ctx.strokeRect(p.x - 10, drawY - 10, p.width + 20, drawHeight + 20);
         ctx.globalAlpha = 1;
       }
 
@@ -5034,6 +5454,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
           for (const target of fighters) {
             if (!target.alive) continue;
             if (target.team === proj.team) continue;
+            if (target.brownPhasing) continue;
 
             if (proj.attackHeight === "high" && target.ducking) continue;
 
@@ -5062,6 +5483,10 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 proj.vx = newDir * Math.max(8, Math.abs(oldVx) || 8);
                 proj.vy = 0;
                 proj.reflected = true;
+                if (proj.type === "brownshift") {
+                  proj.team = target.team;
+                  proj.owner = target;
+                }
 
                 handledProjectile = true;
                 break;
@@ -5074,6 +5499,11 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 const blocked = canBlockAttack(proj.owner, target, "chargeball", proj.attackHeight);
                 let actualDamage = target.damageAmpTimer > 0 ? proj.damage * 2 : proj.damage;
                 let knockback = Math.min(24, 6 + Math.floor((proj.damage || 1) / 2));
+                if (target.brownCharging) {
+                  target.brownCharging = false;
+                  target.brownChargeTimer = 0;
+                }
+                if (target.brownInvulnTimer > 0) actualDamage = 0;
 
                 if (blocked) {
                   actualDamage = Math.floor(actualDamage * 0.25);
@@ -5093,10 +5523,20 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   target.attackTimer = 0;
                   target.attackType = "";
                 }
+              } else if (proj.type === "brownshift") {
+                const phaseOwner = proj.phaseOwner || fighters.find((p) => p.id === proj.phaseOwnerId) || proj.owner;
+                applyDamage(phaseOwner, target, "brownshift", {
+                  attackHeight: proj.attackHeight,
+                  isProjectile: true,
+                  knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
+                  ignoreRainbowInvulnerable: !!proj.reflected,
+                });
+                landBrownShift(phaseOwner, target.x + target.width / 2 - (phaseOwner?.width || 40) / 2);
               } else if (proj.type === "monochromeball") {
                 const blocked = canBlockAttack(proj.owner, target, "monochromeball", proj.attackHeight);
                 const damageDone = applyDamage(proj.owner, target, "monochromeball", {
                   attackHeight: proj.attackHeight,
+                  isProjectile: true,
                   knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
                   ignoreRainbowInvulnerable: !!proj.reflected,
                 });
@@ -5107,6 +5547,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 const blocked = canBlockAttack(proj.owner, target, "yellowspear", proj.attackHeight);
                 applyDamage(proj.owner, target, "yellowspear", {
                   attackHeight: proj.attackHeight,
+                  isProjectile: true,
                   knockbackDir: 0,
                 });
                 if (proj.owner) proj.owner.spearLocked = false;
@@ -5123,12 +5564,15 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   target.frozenTimer = 0;
                   target.monochromeStunned = false;
                   target.monochromeStunTimer = 0;
+                  target.brownStunned = false;
+                  target.brownStunTimer = 0;
                   target.hitstun = false;
                   target.hitstunTimer = 0;
                 }
               } else {
                 applyDamage(proj.owner, target, proj.type, {
                   attackHeight: proj.attackHeight,
+                  isProjectile: true,
                   knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
                   ignoreRainbowInvulnerable: !!proj.reflected,
                 });
@@ -5145,6 +5589,10 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
           if (proj.x < -50 || proj.x > WORLD_W + 50 || proj.y < -90 || proj.y > WORLD_H + 90) {
             if (proj.type === "yellowspear" && proj.owner) proj.owner.spearLocked = false;
+            if (proj.type === "brownshift") {
+              const phaseOwner = proj.phaseOwner || fighters.find((p) => p.id === proj.phaseOwnerId) || proj.owner;
+              landBrownShift(phaseOwner, proj.x < -50 ? 0 : WORLD_W - (phaseOwner?.width || 40));
+            }
             projectiles.current.splice(i, 1);
           }
         }
@@ -5167,7 +5615,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
         const f1Tag = mode === "online" ? f1.playerName || "Player 1" : "You";
         const f2Tag = mode === "online" ? f2.playerName || "Player 2" : f2.isHuman ? "P2" : gameConfig.practiceDummy ? "Dummy" : "AI";
         drawHealthBarSmall(`${f1.name} (${f1Tag})`, f1.alive ? f1.health : 0, 30, 20, fighterBarColor(f1), team1Rounds, false, f1.maxHealth || 100);
-        drawHealthBarSmall(`${f2.name} (${f2Tag})`, f2.alive ? f2.health : 0, WORLD_W - 280, 20, fighterBarColor(f2), team2Rounds, true, f2.maxHealth || 100);
+        drawHealthBarSmall(`${f2.name} (${f2Tag})`, f2.alive ? f2.health : 0, WORLD_W - 250, 20, fighterBarColor(f2), team2Rounds, true, f2.maxHealth || 100);
       } else {
         const p1 = fighters.find((f) => f.id === "p1");
         const p2 = fighters.find((f) => f.id === "p2");
@@ -5177,8 +5625,8 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
         drawHealthBarSmall(`${p1.name} (P1)`, p1.alive ? p1.health : 0, 20, 18, fighterBarColor(p1), team1Rounds, false, p1.maxHealth || 100);
         drawHealthBarSmall(`${p2.name} (P2)`, p2.alive ? p2.health : 0, 20, 86, fighterBarColor(p2), null, false, p2.maxHealth || 100);
 
-        drawHealthBarSmall(`${e1.name} (E1)`, e1.alive ? e1.health : 0, WORLD_W - 280, 18, fighterBarColor(e1), team2Rounds, true, e1.maxHealth || 100);
-        drawHealthBarSmall(`${e2.name} (E2)`, e2.alive ? e2.health : 0, WORLD_W - 280, 86, fighterBarColor(e2), null, true, e2.maxHealth || 100);
+        drawHealthBarSmall(`${e1.name} (E1)`, e1.alive ? e1.health : 0, WORLD_W - 250, 18, fighterBarColor(e1), team2Rounds, true, e1.maxHealth || 100);
+        drawHealthBarSmall(`${e2.name} (E2)`, e2.alive ? e2.health : 0, WORLD_W - 250, 86, fighterBarColor(e2), null, true, e2.maxHealth || 100);
       }
 
       drawRoundTimer(Math.max(0, secondsLeft));
@@ -5294,15 +5742,17 @@ useEffect(() => {
               <div className="text-sm text-gray-600 font-light">This username is locked into the secret {lockedSecretName} fighter.</div>
             </div>
           ) : (
-          <div className="grid grid-cols-4 gap-3">
-            {FIGHTER_COLORS.map((c) => (
+          <div className="grid grid-cols-5 gap-3">
+            {ONLINE_FIGHTER_COLORS.map((c) => {
+              const locked = !canUseColor(c);
+              return (
               <ColorCard
                 key={c}
                 color={c}
                 selected={charSelect.me === c}
                 onClick={() => {
+                  if (locked) return;
                   if (!socketRef.current) return;
-                  // set local selection and notify server
                   setCharSelect((prev) => prev ? { ...prev, me: c } : prev);
                   try {
                     const side = matched?.side || (onlineMatchRef.current && onlineMatchRef.current.side) || 'left';
@@ -5310,8 +5760,12 @@ useEffect(() => {
                   } catch (e) {}
                   socketRef.current.emit('char:selected', { matchId, character: c });
                 }}
+                note={fighterNote(c)}
+                locked={locked}
+                lockText={lockTextForColor(c)}
               />
-            ))}
+            );
+            })}
           </div>
           )}
           <div className="mt-4 text-sm text-gray-600">Opponent: {matched?.opponent?.username} {charSelect.opponent ? `(selected: ${charSelect.opponent})` : ''}</div>
@@ -5722,7 +6176,7 @@ useEffect(() => {
     </div>
   );
 
-  const ColorCard = ({ color, selected, onClick, note }) => {
+  const ColorCard = ({ color, selected, onClick, note, locked = false, lockText = "" }) => {
     const glow =
       color === "red"
         ? "rgba(239, 68, 68, 0.2)"
@@ -5738,6 +6192,10 @@ useEffect(() => {
         ? "rgba(250, 204, 21, 0.24)"
         : color === "orange"
         ? "rgba(249, 115, 22, 0.22)"
+        : color === "brown"
+        ? "rgba(146, 64, 14, 0.24)"
+        : color === "pink"
+        ? "rgba(236, 72, 153, 0.24)"
         : "rgba(31, 41, 55, 0.2)";
 
     const border =
@@ -5755,6 +6213,10 @@ useEffect(() => {
         ? "#ca8a04"
         : color === "orange"
         ? "#f97316"
+        : color === "brown"
+        ? "#92400e"
+        : color === "pink"
+        ? "#ec4899"
         : "#1f2937";
 
     const bodyClass =
@@ -5772,12 +6234,19 @@ useEffect(() => {
         ? "bg-yellow-300 border-yellow-600"
         : color === "orange"
         ? "bg-orange-500 border-orange-700"
+        : color === "brown"
+        ? "bg-amber-900 border-amber-950"
+        : color === "pink"
+        ? "bg-pink-500 border-pink-700"
         : "bg-gray-800 border-black";
 
     return (
       <button
-        onClick={onClick}
-        className="group relative bg-white border rounded-3xl p-10 hover:scale-[0.98] active:scale-95 transition-all duration-150"
+        onClick={locked ? undefined : onClick}
+        disabled={locked}
+        className={`group relative bg-white border rounded-3xl p-10 transition-all duration-150 ${
+          locked ? "opacity-70 cursor-not-allowed" : "hover:scale-[0.98] active:scale-95"
+        }`}
         style={{
           boxShadow: selected ? `0 15px 40px ${glow}` : "0 10px 30px rgba(0, 0, 0, 0.05)",
           borderColor: selected ? border : "#f3f4f6",
@@ -5788,6 +6257,11 @@ useEffect(() => {
         </div>
         <h2 className="text-2xl font-light text-gray-900 mb-2 capitalize">{color}</h2>
         <p className="text-xs font-light text-gray-500">{note}</p>
+        {locked && (
+          <div className="absolute inset-x-4 bottom-4 rounded-2xl bg-gray-900/90 text-white text-[11px] font-light px-3 py-2">
+            {lockText}
+          </div>
+        )}
       </button>
     );
   };
@@ -5813,12 +6287,26 @@ useEffect(() => {
           <h1 className="text-5xl font-light text-gray-900 mb-3">Achievements</h1>
           {!user ? (
             <>
-              <p className="text-lg font-light text-gray-600 mb-8">Sign in through 1v1 Online to view and earn achievements.</p>
+              <p className="text-lg font-light text-gray-600 mb-8">Sign in from the Login tab to view and earn achievements.</p>
               <button onClick={goHome} className="rounded-2xl px-6 py-3 bg-gray-900 text-white">Return Home</button>
             </>
           ) : (
             <>
-              <p className="text-sm font-light text-gray-500 mb-8">Logged in as {user.username}</p>
+              <p className="text-sm font-light text-gray-500 mb-4">Logged in as {user.username}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8 text-sm">
+                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
+                  <div className="text-gray-500 font-light">Record</div>
+                  <div className="text-gray-900">{currentRecord}</div>
+                </div>
+                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
+                  <div className="text-gray-500 font-light">Wins Rank</div>
+                  <div className="text-gray-900">#{userRank?.winsRank || "?"} · {Number(user?.wins) || 0} wins</div>
+                </div>
+                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
+                  <div className="text-gray-500 font-light">WLR Rank</div>
+                  <div className="text-gray-900">#{userRank?.wlrRank || "?"} · {currentWlr} WLR</div>
+                </div>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
                 {FIGHTER_COLORS.map((color) => (
                   <div key={color} className="rounded-3xl border border-gray-100 bg-gray-50 p-5 flex items-center justify-between gap-4">
@@ -5859,7 +6347,7 @@ useEffect(() => {
                 <div
                   className={`rounded-3xl border p-5 flex items-center justify-between gap-4 ${
                     hasAchievement("online:monochrome")
-                      ? ""
+                      ? "border-yellow-300 bg-yellow-50"
                       : "border-gray-100 bg-gray-50"
                   }`}
                 >
@@ -5869,6 +6357,7 @@ useEffect(() => {
                   </div>
                   <div
                     className={`text-4xl ${hasAchievement("online:monochrome") ? "" : "grayscale opacity-25"}`}
+                    style={hasAchievement("online:monochrome") ? { filter: "drop-shadow(0 0 12px rgba(250,204,21,0.9))" } : {}}
                   >
                     ⭐
                   </div>
@@ -5893,15 +6382,16 @@ useEffect(() => {
           <h1 className="text-6xl font-light text-gray-900 mb-4">RGB Fighters</h1>
           <p className="text-4xl font-light text-gray-500 mb-12">Choose a Mode</p>
 
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             {[
+              { key: "login", title: "Login", desc: user ? `Signed in as ${user.username}` : "Sign in for online and achievements" },
               { key: "practice", title: "Practice", desc: "100-HP dummy (KO disappears) + Refresh button" },
               { key: "single", title: "Single Player", desc: "Fight an AI (best of 3)" },
               { key: "coop", title: "Multi Player", desc: "2v2: P1+P2 vs AI team (pick both enemies)" },
               { key: "ladder", title: "Ladder", desc: "Face all the colors, then Monochrome" },
               { key: "offline", title: "1v1 Offline", desc: "Local PvP (P1 vs P2)" },
-              { key: "achievements", title: "Achievements", desc: "Collect them all" },
               { key: "online", title: "1v1 Online", desc: "Play against real players online" },
+              { key: "achievements", title: "Achievements", desc: "Collect them all" },
             ].map((m) => {
               const disabled = false;
               return (
@@ -5926,6 +6416,31 @@ useEffect(() => {
     );
   }
 
+  if (mode === "login" && menuStep === "login") {
+    return (
+      <Layout>
+        <div className="bg-white rounded-3xl p-10 text-center max-w-3xl w-full border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
+          <h1 className="text-5xl font-light text-gray-900 mb-4">Login</h1>
+          {user ? (
+            <div className="space-y-5">
+              <p className="text-lg font-light text-gray-600">Signed in as <strong>{user.username}</strong></p>
+              <div className="flex justify-center gap-3 flex-wrap">
+                <button onClick={() => startModeFlow("online")} className="bg-green-600 text-white rounded-2xl px-6 py-3">Play Online</button>
+                <button onClick={() => { localStorage.removeItem('rgb_token'); setToken(null); setUser(null); setAchievements([]); setUserRank(null); }} className="bg-red-600 text-white rounded-2xl px-6 py-3">Logout</button>
+                <button onClick={goHome} className="bg-gray-200 text-gray-900 rounded-2xl px-6 py-3">Return Home</button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <Login onLogin={(u, t) => { setUser(u); setToken(t); refreshAchievements(); }} />
+              <button onClick={goHome} className="bg-gray-200 text-gray-900 rounded-2xl px-6 py-3">Return Home</button>
+            </div>
+          )}
+        </div>
+      </Layout>
+    );
+  }
+
   if (mode === "online" && menuStep !== "playing") {
     return (
       <Layout>
@@ -5935,15 +6450,27 @@ useEffect(() => {
 
           {!user ? (
             <div className="space-y-6">
-              <p className="text-lg font-light text-gray-500">You must be logged in to play online.</p>
-              <Login onLogin={(u, t) => { setUser(u); setToken(t); }} />
+              <p className="text-lg font-light text-gray-500">Log in from the home screen to play online.</p>
               <div className="pt-4">
+                <button onClick={() => startModeFlow("login")} className="bg-gray-900 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition mr-3">Go to Login</button>
                 <button onClick={goHome} className="bg-gray-200 text-gray-900 rounded-2xl px-6 py-3 hover:opacity-90 transition">Return Home</button>
               </div>
             </div>
           ) : (
             <div className="space-y-6">
-              <p className="text-lg font-light text-gray-500">Logged in as <strong>{user.username}</strong> — Record: {user.wins}W - {user.losses}L</p>
+              <div className="flex flex-col items-center gap-3">
+                <p className="text-lg font-light text-gray-500">Logged in as <strong>{user.username}</strong></p>
+                <table className="text-sm border border-gray-200 rounded-2xl overflow-hidden">
+                  <tbody>
+                    <tr className="bg-gray-50">
+                      <th className="px-4 py-2 font-medium text-gray-600 border-r border-gray-200">Record</th>
+                      <td className="px-4 py-2 text-gray-900">{currentRecord}</td>
+                      <th className="px-4 py-2 font-medium text-gray-600 border-x border-gray-200">WLR</th>
+                      <td className="px-4 py-2 text-gray-900">{currentWlr}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
               <div className="flex flex-col items-center gap-4">
                 {matched && (
                   <div className="p-4 border rounded-md w-full max-w-md">
@@ -5951,7 +6478,7 @@ useEffect(() => {
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="font-medium">You ({user.username})</div>
-                        <div className="text-xs">Record: {user.wins}W - {user.losses}L</div>
+                        <div className="text-xs">Record: {currentRecord}</div>
                         <div className="text-xs">Side: {matched.side === 'left' ? 'Left' : 'Right'}</div>
                       </div>
                       <div>
@@ -6204,12 +6731,15 @@ useEffect(() => {
           </p>
 
           <div className="grid grid-cols-4 gap-6">
-            {FIGHTER_COLORS.map((c) => (
+            {selectableColorsForCurrentMode().map((c) => {
+              const locked = !canUseColor(c);
+              return (
               <ColorCard
                 key={c}
                 color={c}
                 selected={p1Color === c}
                 onClick={() => {
+                  if (locked) return;
                   playSfx("menu_select");
                   setP1Color(c);
 
@@ -6221,8 +6751,11 @@ useEffect(() => {
                   setManagedTimeout(() => proceedAfterP1(), 0);
                 }}
                 note={fighterNote(c)}
+                locked={locked}
+                lockText={lockTextForColor(c)}
               />
-            ))}
+            );
+            })}
           </div>
 
           <button onClick={goHome} className="mt-10 text-sm text-gray-400 hover:text-gray-600 font-light transition-colors">

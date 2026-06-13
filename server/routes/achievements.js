@@ -5,6 +5,15 @@ import { verifyToken } from '../middleware/auth.js';
 const router = express.Router();
 const COLORS = new Set(['red', 'blue', 'green', 'black', 'white', 'purple', 'yellow', 'orange']);
 const DIFFICULTIES = new Set(['easy', 'medium', 'hard']);
+const OFFLINE_ACHIEVEMENTS = [...COLORS].flatMap((color) => [...DIFFICULTIES].map((difficulty) => `ladder:${color}:${difficulty}`));
+const SPECIAL_ACHIEVEMENTS = ['online:rainbow', 'online:monochrome'];
+const FULL_ACHIEVEMENTS = [...OFFLINE_ACHIEVEMENTS, ...SPECIAL_ACHIEVEMENTS];
+
+const defaultAchievementsForUsername = (username) => {
+  if (username === 'Server Owner' || username === 'Jinxy') return FULL_ACHIEVEMENTS;
+  if (username === 'Sebas') return OFFLINE_ACHIEVEMENTS;
+  return [];
+};
 
 const unlockAchievement = async (userId, achievementKey) => {
   await pool.query(
@@ -15,11 +24,17 @@ const unlockAchievement = async (userId, achievementKey) => {
 
 router.get('/', verifyToken, async (req, res) => {
   try {
+    const userResult = await pool.query('SELECT username FROM users WHERE id = $1', [req.userId]);
+    const username = userResult.rows?.[0]?.username || '';
     const result = await pool.query(
       'SELECT achievement_key FROM achievements WHERE user_id = $1 ORDER BY achievement_key',
       [req.userId]
     );
-    res.json({ achievements: result.rows.map((row) => row.achievement_key) });
+    const merged = new Set([
+      ...result.rows.map((row) => row.achievement_key),
+      ...defaultAchievementsForUsername(username),
+    ]);
+    res.json({ achievements: [...merged].sort() });
   } catch (err) {
     console.error('Achievements fetch error:', err);
     res.status(500).json({ error: 'Server error' });
