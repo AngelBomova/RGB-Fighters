@@ -948,14 +948,17 @@ const toggleFullscreen = async () => {
   const randStage = () => randPick(["default", "recursion", "sky", "hourglass", "bottom"]);
   const FIGHTER_COLORS = ["red", "blue", "green", "black", "white", "purple", "yellow", "orange"];
   const RAINBOW_COLORS = ["#ef4444", "#f97316", "#facc15", "#22c55e", "#3b82f6", "#a855f7", "#f8fafc"];
+  const MONOCHROME_COLORS = ["#020617", "#4b5563", "#9ca3af", "#f8fafc"];
   const LADDER_TOTAL_MATCHES = FIGHTER_COLORS.length + 1;
   const LADDER_MIRROR_INDEX = FIGHTER_COLORS.length - 1;
-  const LADDER_RAINBOW_INDEX = FIGHTER_COLORS.length;
+  const LADDER_BOSS_INDEX = FIGHTER_COLORS.length;
   const randColor = () => randPick(FIGHTER_COLORS);
   const isRainbowUser = (name) => String(name || "") === "Rainbow";
+  const isMonochromeUser = (name) => String(name || "") === "Monochrome";
+  const getLockedSecretColor = (name) => isRainbowUser(name) ? "rainbow" : isMonochromeUser(name) ? "monochrome" : null;
 
   useEffect(() => {
-    if (mode !== "ladder" || !gameOver || matchWinnerText !== "Team 1" || ladderIndex !== LADDER_RAINBOW_INDEX) return;
+    if (mode !== "ladder" || !gameOver || matchWinnerText !== "Team 1" || ladderIndex !== LADDER_BOSS_INDEX) return;
     const authToken = token || (typeof localStorage !== "undefined" ? localStorage.getItem("rgb_token") : null);
     if (!authToken || !p1Color || !difficulty) return;
 
@@ -985,6 +988,8 @@ const toggleFullscreen = async () => {
       ? "Spear & Reflect"
       : c === "rainbow"
       ? "Turret & Summon"
+      : c === "monochrome"
+      ? "Homing Blast & Floor Wave"
       : "Triple Fire & Speed Charge";
   const shuffle = (arr) => {
     const a = [...arr];
@@ -1074,9 +1079,9 @@ const toggleFullscreen = async () => {
     if (mode === "ladder") {
       const idx = ladderIndex;
       const isMirror = idx === LADDER_MIRROR_INDEX;
-      const isLast = idx === LADDER_RAINBOW_INDEX;
+      const isLast = idx === LADDER_BOSS_INDEX;
 
-      const oppColor = isLast ? "rainbow" : isMirror ? p1Color : ladderOppOrder[idx] || randColor();
+      const oppColor = isLast ? "monochrome" : isMirror ? p1Color : ladderOppOrder[idx] || randColor();
       const diffByStep = idx <= 0 ? "easy" : idx <= 3 ? "medium" : "hard";
 
       return {
@@ -1278,6 +1283,8 @@ const toggleFullscreen = async () => {
         spearLocked: p.spearLocked,
         spearStunned: p.spearStunned,
         spearStunTimer: p.spearStunTimer,
+        monochromeStunned: p.monochromeStunned,
+        monochromeStunTimer: p.monochromeStunTimer,
         reflecting: p.reflecting,
         reflectTimer: p.reflectTimer,
         punchCooldown: p.punchCooldown,
@@ -1306,6 +1313,7 @@ const toggleFullscreen = async () => {
         homing: proj.homing,
         speed: proj.speed,
         reflected: proj.reflected,
+        trackXOnly: proj.trackXOnly,
       })),
     };
   };
@@ -1626,6 +1634,8 @@ const toggleFullscreen = async () => {
             return { hex: "#f97316", name: "Orange", type: "explosion" };
           case "rainbow":
             return { hex: "#ec4899", name: "Rainbow", type: "rainbow" };
+          case "monochrome":
+            return { hex: "#6b7280", name: "Monochrome", type: "monochrome" };
           default:
             return { hex: "#ef4444", name: "Red", type: "fire" };
         }
@@ -1760,8 +1770,8 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         height: 60,
         vx: 0,
         vy: 0,
-        maxHealth: opts.maxHealth || (data.type === "rainbow" ? 150 : 100),
-        health: opts.health || (data.type === "rainbow" ? 150 : 100),
+        maxHealth: opts.maxHealth || (data.type === "rainbow" ? 150 : data.type === "monochrome" ? 120 : 100),
+        health: opts.health || (data.type === "rainbow" ? 150 : data.type === "monochrome" ? 120 : 100),
         color: data.hex,
         lightColor: data.light,
         name: data.name,
@@ -1810,6 +1820,8 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         spearLocked: false,
         spearStunned: false,
         spearStunTimer: 0,
+        monochromeStunned: false,
+        monochromeStunTimer: 0,
         reflecting: false,
         reflectTimer: 0,
         punchCooldown: 0,
@@ -1994,6 +2006,8 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           p.spearLocked = false;
           p.spearStunned = false;
           p.spearStunTimer = 0;
+          p.monochromeStunned = false;
+          p.monochromeStunTimer = 0;
           p.reflecting = false;
           p.reflectTimer = 0;
           p.speed = 5;
@@ -2038,6 +2052,8 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
       if (def.frozen) {
         def.frozen = false;
         def.frozenTimer = 0;
+        def.monochromeStunned = false;
+        def.monochromeStunTimer = 0;
       }
     };
 
@@ -2168,13 +2184,13 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           hitstunFrames = 16;
           break;
         case "dash":
-          damage = 4;
+          damage = 400;
           knockback = 12;
           launchUp = true;
           hitstunFrames = 16;
           break;
         case "fireball":
-          damage = 5;
+          damage = 500;
           knockback = 15;
           hitstunFrames = 12;
           break;
@@ -2198,6 +2214,18 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           damage = 3;
           knockback = 4;
           hitstunFrames = 8;
+          break;
+        case "monochromeball":
+          damage = 10;
+          knockback = 10;
+          launchUp = true;
+          hitstunFrames = 18;
+          break;
+        case "monochromewave":
+          damage = 10;
+          knockback = 3;
+          hitstunFrames = 10;
+          freezeFrames = 180;
           break;
         case "yellowspear":
           damage = 2;
@@ -2247,6 +2275,13 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           break;
         default:
           break;
+      }
+
+      if (attacker?.type === "monochrome") {
+        if (attackType === "punch") damage = 5;
+        if (attackType === "kick") damage = 8;
+        if (attackType === "uppercut") damage = 15;
+        if (attackType === "sweep") damage = 11;
       }
 
       if (attacker?.type === "rainbow" && ["punch", "kick", "uppercut", "sweep"].includes(attackType)) {
@@ -2311,6 +2346,8 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         if (freezeFrames > 0) {
           defender.frozen = true;
           defender.frozenTimer = freezeFrames;
+          defender.monochromeStunned = attackType === "monochromewave";
+          defender.monochromeStunTimer = attackType === "monochromewave" ? freezeFrames : 0;
         }
         if (disableBlock) {
           defender.blockDisabled = true;
@@ -2493,6 +2530,74 @@ const beginRainbowSummon = (fighter) => {
   return true;
 };
 
+const monochromeShotColor = () => MONOCHROME_COLORS[Math.floor(Date.now() / 100) % MONOCHROME_COLORS.length];
+
+const beginMonochromeMissile = (fighter) => {
+  if (!fighter.canProjectile || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging) return false;
+  const target = getNearestEnemy(fighter);
+  if (!target) return false;
+
+  stopDefense(fighter);
+  const startX = fighter.x + fighter.width / 2;
+  const startY = fighter.y + fighter.height / 2;
+  const targetX = target.x + target.width / 2;
+  const targetY = target.y + target.height / 2;
+  const dx = targetX - startX;
+  const dy = targetY - startY;
+  const distance = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+  const speed = 8.5;
+
+  projectiles.current.push({
+    x: startX,
+    y: startY,
+    vx: (dx / distance) * speed,
+    vy: (dy / distance) * speed,
+    owner: fighter,
+    team: fighter.team,
+    type: "monochromeball",
+    attackHeight: "overhead",
+    color: monochromeShotColor(),
+    radius: 12,
+    homing: true,
+    speed,
+  });
+
+  fighter.canProjectile = false;
+  playSfx("fireball");
+  setManagedTimeout(() => {
+    fighter.canProjectile = true;
+  }, 5000);
+  return true;
+};
+
+const beginMonochromeWave = (fighter) => {
+  if (!fighter.canSpecial2 || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging) return false;
+  const target = getNearestEnemy(fighter);
+  if (!target) return false;
+
+  stopDefense(fighter);
+  projectiles.current.push({
+    x: target.x + target.width / 2,
+    y: groundLevel + 34,
+    vx: 0,
+    vy: -13,
+    owner: fighter,
+    team: fighter.team,
+    type: "monochromewave",
+    attackHeight: "low",
+    color: "#f8fafc",
+    radius: 52,
+    trackXOnly: true,
+  });
+
+  fighter.canSpecial2 = false;
+  playSfx("white_drop");
+  setManagedTimeout(() => {
+    fighter.canSpecial2 = true;
+  }, 8000);
+  return true;
+};
+
   const beginMelee = (ai, attackType) => {
     if (ai.attacking || ai.hitstun || ai.frozen) return false;
 
@@ -2546,6 +2651,7 @@ const beginRainbowSummon = (fighter) => {
 
 const beginProjectile = (ai) => {
   if (ai.type === "rainbow") return beginRainbowTurret(ai);
+  if (ai.type === "monochrome") return beginMonochromeMissile(ai);
   if (!ai.canProjectile || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging) return false;
 
   const projX = ai.x + (ai.facing > 0 ? ai.width : 0);
@@ -3209,6 +3315,16 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
   }
 
   if (
+    ai.type === "monochrome" &&
+    ai.canSpecial2 &&
+    !ai.specialDisabled &&
+    abs < 640 &&
+    rand() < getAiSettings(ai).specialChance
+  ) {
+    if (beginMonochromeWave(ai)) return;
+  }
+
+  if (
     ai.type === "psychic" &&
     ai.canSpecial2 &&
     !ai.specialDisabled &&
@@ -3401,7 +3517,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
 };
 
     const drawHealthBarSmall = (label, health, x, y, color, roundsWon, alignRight = false, maxHealth = 100) => {
-      const barW = 190;
+      const barW = 250;
       const barH = 16;
       const boxH = 60;
 
@@ -3411,10 +3527,16 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
       ctx.lineWidth = 3;
       ctx.strokeRect(x, y, barW, boxH);
 
-      ctx.fillStyle = "#111827";
-      ctx.font = "12px Arial";
       const hpText = `${label}  ${Math.max(0, Math.floor(health))} HP`;
-      const tw = ctx.measureText(hpText).width;
+      ctx.fillStyle = "#111827";
+      let labelFontSize = 12;
+      ctx.font = `${labelFontSize}px Arial`;
+      let tw = ctx.measureText(hpText).width;
+      while (tw > barW - 20 && labelFontSize > 9) {
+        labelFontSize--;
+        ctx.font = `${labelFontSize}px Arial`;
+        tw = ctx.measureText(hpText).width;
+      }
       ctx.fillText(hpText, alignRight ? x + barW - 10 - tw : x + 10, y + 16);
 
       ctx.fillStyle = "#e5e7eb";
@@ -3424,10 +3546,11 @@ ctx.lineWidth = 2;
 ctx.strokeRect(x + 10, y + 24, barW - 20, barH);
 
 const hpW = ((Math.max(0, Math.min(maxHealth, health)) / maxHealth) * (barW - 20)) | 0;
-if (color === "rainbow") {
+if (color === "rainbow" || color === "monochrome") {
   const barGradient = ctx.createLinearGradient(x + 10, y + 24, x + barW - 10, y + 24);
-  RAINBOW_COLORS.forEach((rainbowColor, index) => {
-    barGradient.addColorStop(index / (RAINBOW_COLORS.length - 1), rainbowColor);
+  const colors = color === "rainbow" ? RAINBOW_COLORS : MONOCHROME_COLORS;
+  colors.forEach((barColor, index) => {
+    barGradient.addColorStop(index / (colors.length - 1), barColor);
   });
   ctx.fillStyle = barGradient;
 } else {
@@ -3617,6 +3740,8 @@ if (hpW > 0) {
         p.spearLocked = false;
         p.spearStunned = false;
         p.spearStunTimer = 0;
+        p.monochromeStunned = false;
+        p.monochromeStunTimer = 0;
         p.reflecting = false;
         p.reflectTimer = 0;
         p.speed = 5;
@@ -3686,6 +3811,8 @@ if (hpW > 0) {
         p.spearLocked = false;
         p.spearStunned = false;
         p.spearStunTimer = 0;
+        p.monochromeStunned = false;
+        p.monochromeStunTimer = 0;
         p.reflecting = false;
         p.reflectTimer = 0;
         p.speed = 5;
@@ -3889,6 +4016,9 @@ if (hpW > 0) {
             beginRainbowTurret(p);
             clearHeld("special1");
             return;
+          } else if (p.type === "monochrome") {
+            if (beginMonochromeMissile(p)) clearHeld("special1");
+            return;
           } else if (p.type === "psychic") {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 8, owner: p, team: p.team, type: "purpleball", attackHeight: "high", color: "#a855f7", radius: 8 });
             playSfx("purple_damage");
@@ -3982,6 +4112,8 @@ if (hpW > 0) {
               clearHeld("special2");
             } else if (p.type === "rainbow") {
               if (beginRainbowSummon(p)) clearHeld("special2");
+            } else if (p.type === "monochrome") {
+              if (beginMonochromeWave(p)) clearHeld("special2");
             } else if (p.type === "light") {
               const target = getNearestEnemy(p);
               if (target) {
@@ -4214,9 +4346,12 @@ if (p.aiBlockHoldTimer > 0) {
 
       if (p.frozen) {
         p.frozenTimer--;
+        if (p.monochromeStunTimer > 0) p.monochromeStunTimer--;
         if (p.frozenTimer <= 0) {
           p.frozen = false;
           p.frozenTimer = 0;
+          p.monochromeStunned = false;
+          p.monochromeStunTimer = 0;
         }
         p.vx = 0;
       }
@@ -4419,6 +4554,42 @@ if (p.aiBlockHoldTimer > 0) {
         return;
       }
 
+      if (proj.type === "monochromeball") {
+        const colors = MONOCHROME_COLORS;
+        for (let i = colors.length - 1; i >= 0; i--) {
+          ctx.fillStyle = colors[(i + Math.floor(Date.now() / 110)) % colors.length];
+          ctx.beginPath();
+          ctx.arc(proj.x, proj.y, Math.max(2, proj.radius - i * 1.1), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.strokeStyle = "#020617";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
+
+      if (proj.type === "monochromewave") {
+        const gradient = ctx.createLinearGradient(proj.x, proj.y + proj.radius, proj.x, proj.y - proj.radius * 1.8);
+        gradient.addColorStop(0, "rgba(2,6,23,0.95)");
+        gradient.addColorStop(0.45, "rgba(156,163,175,0.78)");
+        gradient.addColorStop(1, "rgba(248,250,252,0.9)");
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.ellipse(proj.x, proj.y, proj.radius * 1.35, proj.radius * 0.65, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 0.85;
+        ctx.fillRect(proj.x - proj.radius * 0.75, proj.y - proj.radius * 1.55, proj.radius * 1.5, proj.radius * 1.55);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = "#020617";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(proj.x - proj.radius * 0.75, proj.y - proj.radius * 1.55, proj.radius * 1.5, proj.radius * 1.55);
+        ctx.restore();
+        return;
+      }
+
       ctx.fillStyle = proj.color;
       ctx.beginPath();
       ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
@@ -4477,6 +4648,17 @@ if (p.aiBlockHoldTimer > 0) {
         ctx.globalAlpha = 1;
       }
 
+      if (p.type === "monochrome") {
+        const pulse = Math.floor(Date.now() / 150);
+        for (let i = 0; i < MONOCHROME_COLORS.length; i++) {
+          ctx.globalAlpha = 0.14;
+          ctx.fillStyle = MONOCHROME_COLORS[(pulse + i) % MONOCHROME_COLORS.length];
+          const grow = 8 + i * 3;
+          ctx.fillRect(p.x - grow / 2, drawY - grow / 2, p.width + grow, drawHeight + grow);
+        }
+        ctx.globalAlpha = 1;
+      }
+
       if (p.rainbowTurretTimer > 0) {
         ctx.globalAlpha = 0.55;
         ctx.strokeStyle = RAINBOW_COLORS[Math.floor(Date.now() / 90) % RAINBOW_COLORS.length];
@@ -4503,6 +4685,14 @@ if (p.aiBlockHoldTimer > 0) {
         ctx.globalAlpha = 0.55;
         ctx.fillStyle = "#facc15";
         ctx.fillRect(p.x - 7, drawY - 7, p.width + 14, drawHeight + 14);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.monochromeStunned) {
+        ctx.globalAlpha = 0.75;
+        ctx.strokeStyle = MONOCHROME_COLORS[Math.floor(Date.now() / 120) % MONOCHROME_COLORS.length];
+        ctx.lineWidth = 5;
+        ctx.strokeRect(p.x - 8, drawY - 8, p.width + 16, drawHeight + 16);
         ctx.globalAlpha = 1;
       }
 
@@ -4599,6 +4789,13 @@ if (p.type === "rainbow") {
   const shift = Math.floor(Date.now() / 140) % RAINBOW_COLORS.length;
   RAINBOW_COLORS.forEach((color, index) => {
     bodyGradient.addColorStop(index / (RAINBOW_COLORS.length - 1), RAINBOW_COLORS[(index + shift) % RAINBOW_COLORS.length]);
+  });
+  ctx.fillStyle = bodyGradient;
+} else if (p.type === "monochrome") {
+  const bodyGradient = ctx.createLinearGradient(p.x, drawY, p.x + p.width, drawY + drawHeight);
+  const shift = Math.floor(Date.now() / 160) % MONOCHROME_COLORS.length;
+  MONOCHROME_COLORS.forEach((color, index) => {
+    bodyGradient.addColorStop(index / (MONOCHROME_COLORS.length - 1), MONOCHROME_COLORS[(index + shift) % MONOCHROME_COLORS.length]);
   });
   ctx.fillStyle = bodyGradient;
 } else {
@@ -4813,7 +5010,13 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
         for (let i = projectiles.current.length - 1; i >= 0; i--) {
           const proj = projectiles.current[i];
-          if (proj.homing && proj.owner?.alive) {
+          if (proj.trackXOnly && proj.owner?.alive) {
+            const target = getNearestEnemy(proj.owner);
+            if (target) {
+              const targetX = target.x + target.width / 2;
+              proj.x += (targetX - proj.x) * 0.18;
+            }
+          } else if (proj.homing && proj.owner?.alive) {
             const target = getNearestEnemy(proj.owner);
             if (target) {
               const dx = target.x + target.width / 2 - proj.x;
@@ -4890,6 +5093,16 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   target.attackTimer = 0;
                   target.attackType = "";
                 }
+              } else if (proj.type === "monochromeball") {
+                const blocked = canBlockAttack(proj.owner, target, "monochromeball", proj.attackHeight);
+                const damageDone = applyDamage(proj.owner, target, "monochromeball", {
+                  attackHeight: proj.attackHeight,
+                  knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
+                  ignoreRainbowInvulnerable: !!proj.reflected,
+                });
+                if (!blocked && damageDone > 0 && proj.owner?.alive) {
+                  proj.owner.health = Math.min(proj.owner.maxHealth || 100, proj.owner.health + 10);
+                }
               } else if (proj.type === "yellowspear") {
                 const blocked = canBlockAttack(proj.owner, target, "yellowspear", proj.attackHeight);
                 applyDamage(proj.owner, target, "yellowspear", {
@@ -4908,6 +5121,8 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   target.spearStunTimer = 180;
                   target.frozen = false;
                   target.frozenTimer = 0;
+                  target.monochromeStunned = false;
+                  target.monochromeStunTimer = 0;
                   target.hitstun = false;
                   target.hitstunTimer = 0;
                 }
@@ -4944,24 +5159,26 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
       projectiles.current.forEach(drawProjectile);
       fighters.forEach(drawFighter);
 
+      const fighterBarColor = (fighter) => fighter.type === "rainbow" ? "rainbow" : fighter.type === "monochrome" ? "monochrome" : fighter.color;
+
       if (!is2v2) {
         const f1 = fighters.find((f) => f.team === 1);
         const f2 = fighters.find((f) => f.team === 2);
         const f1Tag = mode === "online" ? f1.playerName || "Player 1" : "You";
         const f2Tag = mode === "online" ? f2.playerName || "Player 2" : f2.isHuman ? "P2" : gameConfig.practiceDummy ? "Dummy" : "AI";
-        drawHealthBarSmall(`${f1.name} (${f1Tag})`, f1.alive ? f1.health : 0, 30, 20, f1.type === "rainbow" ? "rainbow" : f1.color, team1Rounds, false, f1.maxHealth || 100);
-        drawHealthBarSmall(`${f2.name} (${f2Tag})`, f2.alive ? f2.health : 0, WORLD_W - 220, 20, f2.type === "rainbow" ? "rainbow" : f2.color, team2Rounds, true, f2.maxHealth || 100);
+        drawHealthBarSmall(`${f1.name} (${f1Tag})`, f1.alive ? f1.health : 0, 30, 20, fighterBarColor(f1), team1Rounds, false, f1.maxHealth || 100);
+        drawHealthBarSmall(`${f2.name} (${f2Tag})`, f2.alive ? f2.health : 0, WORLD_W - 280, 20, fighterBarColor(f2), team2Rounds, true, f2.maxHealth || 100);
       } else {
         const p1 = fighters.find((f) => f.id === "p1");
         const p2 = fighters.find((f) => f.id === "p2");
         const e1 = fighters.find((f) => f.id === "ai1");
         const e2 = fighters.find((f) => f.id === "ai2");
 
-        drawHealthBarSmall(`${p1.name} (P1)`, p1.alive ? p1.health : 0, 20, 18, p1.type === "rainbow" ? "rainbow" : p1.color, team1Rounds, false, p1.maxHealth || 100);
-        drawHealthBarSmall(`${p2.name} (P2)`, p2.alive ? p2.health : 0, 20, 86, p2.type === "rainbow" ? "rainbow" : p2.color, null, false, p2.maxHealth || 100);
+        drawHealthBarSmall(`${p1.name} (P1)`, p1.alive ? p1.health : 0, 20, 18, fighterBarColor(p1), team1Rounds, false, p1.maxHealth || 100);
+        drawHealthBarSmall(`${p2.name} (P2)`, p2.alive ? p2.health : 0, 20, 86, fighterBarColor(p2), null, false, p2.maxHealth || 100);
 
-        drawHealthBarSmall(`${e1.name} (E1)`, e1.alive ? e1.health : 0, WORLD_W - 210, 18, e1.type === "rainbow" ? "rainbow" : e1.color, team2Rounds, true, e1.maxHealth || 100);
-        drawHealthBarSmall(`${e2.name} (E2)`, e2.alive ? e2.health : 0, WORLD_W - 210, 86, e2.type === "rainbow" ? "rainbow" : e2.color, null, true, e2.maxHealth || 100);
+        drawHealthBarSmall(`${e1.name} (E1)`, e1.alive ? e1.health : 0, WORLD_W - 280, 18, fighterBarColor(e1), team2Rounds, true, e1.maxHealth || 100);
+        drawHealthBarSmall(`${e2.name} (E2)`, e2.alive ? e2.health : 0, WORLD_W - 280, 86, fighterBarColor(e2), null, true, e2.maxHealth || 100);
       }
 
       drawRoundTimer(Math.max(0, secondsLeft));
@@ -5065,15 +5282,16 @@ useEffect(() => {
   const CharSelectModal = () => {
     if (!charSelect) return null;
     const matchId = charSelect.matchId || (matched && matched.matchId) || (onlineMatchRef.current && onlineMatchRef.current.matchId);
-    const lockedRainbow = charSelect.lockedRainbow || isRainbowUser(user?.username);
+    const lockedSecretColor = charSelect.lockedSecretColor || getLockedSecretColor(user?.username);
+    const lockedSecretName = lockedSecretColor === "monochrome" ? "Monochrome" : "Rainbow";
     return (
       <div className="fixed inset-0 bg-black/10 backdrop-blur-[2px] z-50 flex items-center justify-center">
         <div className="bg-white/95 rounded-2xl p-6 max-w-4xl w-full mx-4 shadow-2xl">
           <h3 className="text-xl mb-3">Character Select — {Math.ceil((charSelect.timeLeft || 20000) / 1000)}s</h3>
-          {lockedRainbow ? (
-            <div className="rounded-3xl border border-fuchsia-200 bg-fuchsia-50 p-8 text-center">
-              <div className="text-3xl font-light text-gray-900 mb-2">Rainbow selected</div>
-              <div className="text-sm text-gray-600 font-light">This username is locked into the secret Rainbow fighter.</div>
+          {lockedSecretColor ? (
+            <div className="rounded-3xl border border-gray-300 bg-gray-50 p-8 text-center">
+              <div className="text-3xl font-light text-gray-900 mb-2">{lockedSecretName} selected</div>
+              <div className="text-sm text-gray-600 font-light">This username is locked into the secret {lockedSecretName} fighter.</div>
             </div>
           ) : (
           <div className="grid grid-cols-4 gap-3">
@@ -5638,6 +5856,25 @@ useEffect(() => {
                     🌟
                   </div>
                 </div>
+                <div
+                  className={`rounded-3xl border p-5 flex items-center justify-between gap-4 ${
+                    hasAchievement("online:monochrome")
+                      ? "border-yellow-300 bg-yellow-50"
+                      : "border-gray-100 bg-gray-50"
+                  }`}
+                  style={hasAchievement("online:monochrome") ? { boxShadow: "0 0 24px rgba(250,204,21,0.35)" } : {}}
+                >
+                  <div>
+                    <div className="text-lg text-gray-900 font-light">Monochrome Slayer</div>
+                    <div className="text-xs text-gray-500 font-light">Beat Monochrome in 1v1 Online</div>
+                  </div>
+                  <div
+                    className={`text-4xl ${hasAchievement("online:monochrome") ? "" : "grayscale opacity-25"}`}
+                    style={hasAchievement("online:monochrome") ? { color: "#facc15", filter: "drop-shadow(0 0 12px rgba(250,204,21,0.9))" } : {}}
+                  >
+                    ✦
+                  </div>
+                </div>
               </div>
               <button onClick={goHome} className="mt-8 rounded-2xl px-6 py-3 bg-gray-900 text-white">Return Home</button>
             </>
@@ -5663,7 +5900,7 @@ useEffect(() => {
               { key: "practice", title: "Practice", desc: "100-HP dummy (KO disappears) + Refresh button" },
               { key: "single", title: "Single Player", desc: "Fight an AI (best of 3)" },
               { key: "coop", title: "Multi Player", desc: "2v2: P1+P2 vs AI team (pick both enemies)" },
-              { key: "ladder", title: "Ladder", desc: "Face all the colors" },
+              { key: "ladder", title: "Ladder", desc: "Face all the colors, then Monochrome" },
               { key: "offline", title: "1v1 Offline", desc: "Local PvP (P1 vs P2)" },
               { key: "achievements", title: "Achievements", desc: "Collect them all" },
               { key: "online", title: "1v1 Online", desc: "Play against real players online" },
@@ -5755,7 +5992,7 @@ useEffect(() => {
                     });
 
                     s.on('char:selectStart', (d) => {
-                      const lockedRainbow = isRainbowUser(user?.username);
+                      const lockedSecretColor = getLockedSecretColor(user?.username);
                       const nextMatchId = d.matchId || (matched && matched.matchId) || (d && d.matchId);
                       if (d?.matchId) {
                         setMatched((prev) => {
@@ -5763,13 +6000,13 @@ useEffect(() => {
                           return { ...(prev || {}), matchId: d.matchId, side: d.side || prev?.side };
                         });
                       }
-                      setCharSelect({ timeLeft: d.timeLimit || 20000, matchId: nextMatchId, me: lockedRainbow ? "rainbow" : null, opponent: null, lockedRainbow });
-                      if (lockedRainbow && nextMatchId) {
+                      setCharSelect({ timeLeft: d.timeLimit || 20000, matchId: nextMatchId, me: lockedSecretColor, opponent: null, lockedSecretColor });
+                      if (lockedSecretColor && nextMatchId) {
                         try {
                           const side = matched?.side || onlineMatchRef.current?.side || "left";
-                          if (side === "left") setP1Color("rainbow"); else setP2Color("rainbow");
+                          if (side === "left") setP1Color(lockedSecretColor); else setP2Color(lockedSecretColor);
                         } catch {}
-                        s.emit('char:selected', { matchId: nextMatchId, character: 'rainbow' });
+                        s.emit('char:selected', { matchId: nextMatchId, character: lockedSecretColor });
                       }
                     });
 

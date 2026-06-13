@@ -224,9 +224,12 @@ async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId) {
         [match.p1.userId, match.p2.userId, winnerId, p1Rounds, p2Rounds, eloChange]
       );
 
-      const loserChar = isP1Winner ? match.p2Char : match.p1Char;
-      if (String(loserChar || '').toLowerCase() === 'rainbow') {
+      const loserChar = String((isP1Winner ? match.p2Char : match.p1Char) || '').toLowerCase();
+      if (loserChar === 'rainbow') {
         await unlockAchievement(winnerId, 'online:rainbow');
+      }
+      if (loserChar === 'monochrome') {
+        await unlockAchievement(winnerId, 'online:monochrome');
       }
     }
 
@@ -403,14 +406,16 @@ io.on('connection', (socket) => {
     if (socket.id !== match.p1.socketId && socket.id !== match.p2.socketId) return;
 
     const isP1 = socket.id === match.p1.socketId;
+    const playerUsername = isP1 ? match.p1.username : match.p2.username;
+    const selectedCharacter = playerUsername === 'Rainbow' ? 'rainbow' : playerUsername === 'Monochrome' ? 'monochrome' : character;
     if (isP1) {
-      match.p1Char = character;
+      match.p1Char = selectedCharacter;
       match.p1Ready = true;
-      io.to(match.p2.socketId).emit('opponent:charSelected', { character });
+      io.to(match.p2.socketId).emit('opponent:charSelected', { character: selectedCharacter });
     } else {
-      match.p2Char = character;
+      match.p2Char = selectedCharacter;
       match.p2Ready = true;
-      io.to(match.p1.socketId).emit('opponent:charSelected', { character });
+      io.to(match.p1.socketId).emit('opponent:charSelected', { character: selectedCharacter });
     }
 
     if (match.p1Ready && match.p2Ready) {
