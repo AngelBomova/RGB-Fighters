@@ -3518,8 +3518,8 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
 
     const drawHealthBarSmall = (label, health, x, y, color, roundsWon, alignRight = false, maxHealth = 100) => {
       const barW = 250;
-      const barH = 16;
-      const boxH = 60;
+      const barH = 12;
+      const boxH = 45;
 
       ctx.fillStyle = "rgba(255,255,255,0.92)";
       ctx.fillRect(x, y, barW, boxH);
@@ -3529,25 +3529,25 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
 
       const hpText = `${label}  ${Math.max(0, Math.floor(health))} HP`;
       ctx.fillStyle = "#111827";
-      let labelFontSize = 12;
+      let labelFontSize = 11;
       ctx.font = `${labelFontSize}px Arial`;
       let tw = ctx.measureText(hpText).width;
-      while (tw > barW - 20 && labelFontSize > 9) {
+      while (tw > barW - 20 && labelFontSize > 8) {
         labelFontSize--;
         ctx.font = `${labelFontSize}px Arial`;
         tw = ctx.measureText(hpText).width;
       }
-      ctx.fillText(hpText, alignRight ? x + barW - 10 - tw : x + 10, y + 16);
+      ctx.fillText(hpText, alignRight ? x + barW - 10 - tw : x + 10, y + 13);
 
       ctx.fillStyle = "#e5e7eb";
-ctx.fillRect(x + 10, y + 24, barW - 20, barH);
+ctx.fillRect(x + 10, y + 18, barW - 20, barH);
 ctx.strokeStyle = "#000000";
 ctx.lineWidth = 2;
-ctx.strokeRect(x + 10, y + 24, barW - 20, barH);
+ctx.strokeRect(x + 10, y + 18, barW - 20, barH);
 
 const hpW = ((Math.max(0, Math.min(maxHealth, health)) / maxHealth) * (barW - 20)) | 0;
 if (color === "rainbow" || color === "monochrome") {
-  const barGradient = ctx.createLinearGradient(x + 10, y + 24, x + barW - 10, y + 24);
+  const barGradient = ctx.createLinearGradient(x + 10, y + 18, x + barW - 10, y + 18);
   const colors = color === "rainbow" ? RAINBOW_COLORS : MONOCHROME_COLORS;
   colors.forEach((barColor, index) => {
     barGradient.addColorStop(index / (colors.length - 1), barColor);
@@ -3556,18 +3556,18 @@ if (color === "rainbow" || color === "monochrome") {
 } else {
   ctx.fillStyle = color;
 }
-ctx.fillRect(x + 10, y + 24, hpW, barH);
+ctx.fillRect(x + 10, y + 18, hpW, barH);
 
 if (hpW > 0) {
   ctx.strokeStyle = "#000000";
   ctx.lineWidth = 1.5;
-  ctx.strokeRect(x + 10, y + 24, hpW, barH);
+  ctx.strokeRect(x + 10, y + 18, hpW, barH);
 }
 
       if (roundsWon != null) {
         for (let i = 0; i < 2; i++) {
   const coinX = x + barW - 16 - i * 16;
-  const coinY = y + 50;
+  const coinY = y + 36;
 
   ctx.fillStyle = i < roundsWon ? "#fbbf24" : "#e5e7eb";
   ctx.beginPath();
@@ -3582,8 +3582,8 @@ if (hpW > 0) {
     };
 
     const drawRoundTimer = (secondsLeft) => {
-      const boxW = 120;
-      const boxH = 44;
+      const boxW = 110;
+      const boxH = 32;
       const x = WORLD_W / 2 - boxW / 2;
       const y = 18;
 
@@ -3595,10 +3595,10 @@ if (hpW > 0) {
       ctx.strokeRect(x, y, boxW, boxH);
 
       ctx.fillStyle = "#111827";
-      ctx.font = "bold 22px Arial";
+      ctx.font = "bold 18px Arial";
       const t = String(secondsLeft).padStart(2, "0");
       const textW = ctx.measureText(t).width;
-      ctx.fillText(t, x + boxW / 2 - textW / 2, y + 30);
+      ctx.fillText(t, x + boxW / 2 - textW / 2, y + 22);
     };
 
     const drawCountdown = (value) => {
@@ -5858,19 +5858,19 @@ useEffect(() => {
                 </div>
                 <div
                   className={`rounded-3xl border p-5 flex items-center justify-between gap-4 ${
-                    hasAchievement("online:monochrome")
+                    hasAchievement("online:monochrome") || hasAchievement("ladder:monochrome:easy") || hasAchievement("ladder:monochrome:medium") || hasAchievement("ladder:monochrome:hard")
                       ? "border-yellow-300 bg-yellow-50"
                       : "border-gray-100 bg-gray-50"
                   }`}
-                  style={hasAchievement("online:monochrome") ? { boxShadow: "0 0 24px rgba(250,204,21,0.35)" } : {}}
+                  style={hasAchievement("online:monochrome") || hasAchievement("ladder:monochrome:easy") || hasAchievement("ladder:monochrome:medium") || hasAchievement("ladder:monochrome:hard") ? { boxShadow: "0 0 24px rgba(250,204,21,0.35)" } : {}}
                 >
                   <div>
                     <div className="text-lg text-gray-900 font-light">Monochrome Slayer</div>
-                    <div className="text-xs text-gray-500 font-light">Beat Monochrome in 1v1 Online</div>
+                    <div className="text-xs text-gray-500 font-light">Beat Monochrome in 1v1 Online or Ladder</div>
                   </div>
                   <div
-                    className={`text-4xl ${hasAchievement("online:monochrome") ? "" : "grayscale opacity-25"}`}
-                    style={hasAchievement("online:monochrome") ? { color: "#facc15", filter: "drop-shadow(0 0 12px rgba(250,204,21,0.9))" } : {}}
+                    className={`text-4xl ${hasAchievement("online:monochrome") || hasAchievement("ladder:monochrome:easy") || hasAchievement("ladder:monochrome:medium") || hasAchievement("ladder:monochrome:hard") ? "" : "grayscale opacity-25"}`}
+                    style={hasAchievement("online:monochrome") || hasAchievement("ladder:monochrome:easy") || hasAchievement("ladder:monochrome:medium") || hasAchievement("ladder:monochrome:hard") ? { color: "#facc15", filter: "drop-shadow(0 0 12px rgba(250,204,21,0.9))" } : {}}
                   >
                     ⭐
                   </div>
