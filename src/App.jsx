@@ -1662,7 +1662,7 @@ const toggleFullscreen = async () => {
     const GRAVITY = 1.2;
     const JUMP_DISTANCE = 120;
 
-    const DARK_VARIANT = { red: "#b91c1c", blue: "#1d4ed8", green: "#15803d", black: "#4b5563", white: "#cbd5e1", purple: "#7e22ce", yellow: "#ca8a04", orange: "#c2410c" };
+    const DARK_VARIANT = { red: "#b91c1c", blue: "#1d4ed8", green: "#15803d", black: "#4b5563", white: "#cbd5e1", purple: "#7e22ce", yellow: "#ca8a04", orange: "#c2410c", brown: "#451a03", pink: "#be185d" };
 
     const toRGBA = (hex, a) => {
       const h = hex.replace("#", "");
@@ -1888,6 +1888,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         pinkParrying: false,
         pinkParryTimer: 0,
         pinkParryDucking: false,
+        pinkPlusHealedIds: {},
         brownPhasing: false,
         brownStunned: false,
         brownStunTimer: 0,
@@ -2750,6 +2751,7 @@ const beginPinkPlus = (fighter) => {
   const cx = fighter.x + fighter.width / 2;
   const cy = fighter.y + fighter.height / 2;
   const speed = 8.5;
+  const pinkPlusId = `pinkplus-${Date.now()}-${Math.random()}`;
   [
     { vx: speed, vy: 0, attackHeight: "high" },
     { vx: -speed, vy: 0, attackHeight: "high" },
@@ -2764,6 +2766,7 @@ const beginPinkPlus = (fighter) => {
       owner: fighter,
       team: fighter.team,
       type: "pinkplus",
+      pinkPlusId,
       attackHeight: shot.attackHeight,
       color: "#ec4899",
       radius: 9,
@@ -2774,7 +2777,7 @@ const beginPinkPlus = (fighter) => {
   playSfx("purple_damage");
   setManagedTimeout(() => {
     fighter.canProjectile = true;
-  }, 3000);
+  }, 1000);
   return true;
 };
 
@@ -2933,7 +2936,7 @@ const beginProjectile = (ai) => {
       projectiles.current.push({
         x: projX,
         y: projY,
-      vx: ai.facing * 8,
+      vx: ai.facing * 12,
       owner: ai,
       team: ai.team,
       type: "purpleball",
@@ -4023,6 +4026,7 @@ if (hpW > 0) {
         p.pinkParrying = false;
         p.pinkParryTimer = 0;
         p.pinkParryDucking = false;
+        p.pinkPlusHealedIds = {};
         p.brownPhasing = false;
         p.brownStunned = false;
         p.brownStunTimer = 0;
@@ -4103,6 +4107,7 @@ if (hpW > 0) {
         p.pinkParrying = false;
         p.pinkParryTimer = 0;
         p.pinkParryDucking = false;
+        p.pinkPlusHealedIds = {};
         p.brownPhasing = false;
         p.brownStunned = false;
         p.brownStunTimer = 0;
@@ -4322,7 +4327,7 @@ if (hpW > 0) {
             if (beginBrownShift(p)) clearHeld("special1");
             return;
           } else if (p.type === "psychic") {
-            projectiles.current.push({ x: projX, y: projY, vx: p.facing * 8, owner: p, team: p.team, type: "purpleball", attackHeight: "high", color: "#a855f7", radius: 8 });
+            projectiles.current.push({ x: projX, y: projY, vx: p.facing * 12, owner: p, team: p.team, type: "purpleball", attackHeight: "high", color: "#a855f7", radius: 8 });
             playSfx("purple_damage");
             cooldown = 1000;
           } else if (p.type === "electric") {
@@ -4495,7 +4500,7 @@ if (hpW > 0) {
       if (p.upperCooldown > 0) p.upperCooldown--;
       if (p.sweepCooldown > 0) p.sweepCooldown--;
 
-      if (p.charging) p.chargeFrames++;
+      if (p.charging) p.chargeFrames += 1.2;
 
       if (p.purpleCharging) {
         p.purpleChargeTimer++;
@@ -5222,6 +5227,18 @@ if (p.type === "rainbow") {
     bodyGradient.addColorStop(index / (MONOCHROME_COLORS.length - 1), MONOCHROME_COLORS[(index + shift) % MONOCHROME_COLORS.length]);
   });
   ctx.fillStyle = bodyGradient;
+} else if (p.type === "pink" && p.color !== "#ec4899") {
+  const bodyGradient = ctx.createLinearGradient(p.x, drawY, p.x + p.width, drawY + drawHeight);
+  bodyGradient.addColorStop(0, "#831843");
+  bodyGradient.addColorStop(0.5, "#be185d");
+  bodyGradient.addColorStop(1, "#f9a8d4");
+  ctx.fillStyle = bodyGradient;
+} else if (p.type === "brown" && p.color !== "#92400e") {
+  const bodyGradient = ctx.createLinearGradient(p.x, drawY, p.x + p.width, drawY + drawHeight);
+  bodyGradient.addColorStop(0, "#451a03");
+  bodyGradient.addColorStop(0.5, "#78350f");
+  bodyGradient.addColorStop(1, "#d97706");
+  ctx.fillStyle = bodyGradient;
 } else {
   ctx.fillStyle = p.color;
 }
@@ -5572,6 +5589,22 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   target.brownStunTimer = 0;
                   target.hitstun = false;
                   target.hitstunTimer = 0;
+                }
+              } else if (proj.type === "pinkplus") {
+                const blocked = canBlockAttack(proj.owner, target, "pinkplus", proj.attackHeight);
+                const damageDone = applyDamage(proj.owner, target, "pinkplus", {
+                  attackHeight: proj.attackHeight,
+                  isProjectile: true,
+                  knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
+                  ignoreRainbowInvulnerable: !!proj.reflected,
+                });
+                if (!blocked && damageDone > 0 && proj.owner?.alive) {
+                  const pinkPlusId = proj.pinkPlusId || "pinkplus";
+                  proj.owner.pinkPlusHealedIds = proj.owner.pinkPlusHealedIds || {};
+                  if (!proj.owner.pinkPlusHealedIds[pinkPlusId]) {
+                    proj.owner.pinkPlusHealedIds[pinkPlusId] = true;
+                    proj.owner.health = Math.min(proj.owner.maxHealth || 100, proj.owner.health + 5);
+                  }
                 }
               } else {
                 applyDamage(proj.owner, target, proj.type, {
