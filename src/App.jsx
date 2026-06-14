@@ -4389,7 +4389,7 @@ if (hpW > 0) {
               p.purpleCharging = true;
               p.purpleChargeTimer = 0;
               p.canSpecial2 = false;
-              setManagedTimeout(() => (p.canSpecial2 = true), 13000);
+              setManagedTimeout(() => (p.canSpecial2 = true), 10000);
               clearHeld("special2");
             } else if (p.type === "electric") {
               p.vx = 0;
@@ -4410,7 +4410,7 @@ if (hpW > 0) {
               p.orangeChargeTimer = 0;
               playSfx("charge_start");
               p.canSpecial2 = false;
-              setManagedTimeout(() => (p.canSpecial2 = true), 13000);
+              setManagedTimeout(() => (p.canSpecial2 = true), 10000);
               clearHeld("special2");
             } else if (p.type === "rainbow") {
               if (beginRainbowSummon(p)) clearHeld("special2");
@@ -4526,7 +4526,7 @@ if (hpW > 0) {
         if (p.orangeChargeTimer >= 60) {
           p.orangeCharging = false;
           p.orangeChargeTimer = 0;
-          p.cooldownBoostTimer = 480;
+          p.cooldownBoostTimer = 600;
           playSfx("orange_orb");
         }
       }
@@ -6392,7 +6392,7 @@ useEffect(() => {
               { key: "practice", title: "Practice", desc: "100-HP dummy (KO disappears) + Refresh button" },
               { key: "single", title: "Single Player", desc: "Fight an AI (best of 3)" },
               { key: "coop", title: "Multi Player", desc: "2v2: P1+P2 vs AI team (pick both enemies)" },
-              { key: "ladder", title: "Ladder", desc: "Face all the colors, a mirror, a secret fighter, then Monochrome" },
+              { key: "ladder", title: "Ladder", desc: "Face all the colors" },
               { key: "offline", title: "1v1 Offline", desc: "Local PvP (P1 vs P2)" },
               { key: "online", title: "1v1 Online", desc: "Play against real players online" },
               { key: "achievements", title: "Achievements", desc: "Collect them all" },
