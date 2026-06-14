@@ -2963,7 +2963,7 @@ const beginProjectile = (ai) => {
         projectiles.current.push({
         x: projX + ai.facing * (offset + 18),
         y: projY,
-        vx: ai.facing * 8,
+        vx: ai.facing * 11,
         owner: ai,
         team: ai.team,
         type: "orangeball",
@@ -4332,7 +4332,7 @@ if (hpW > 0) {
             cooldown = 5000;
           } else if (p.type === "explosion") {
             [-32, 0, 32].forEach((offset) => {
-              projectiles.current.push({ x: projX + p.facing * (offset + 18), y: projY, vx: p.facing * 8, owner: p, team: p.team, type: "orangeball", attackHeight: "high", color: "#f97316", radius: 8 });
+              projectiles.current.push({ x: projX + p.facing * (offset + 18), y: projY, vx: p.facing * 11, owner: p, team: p.team, type: "orangeball", attackHeight: "high", color: "#f97316", radius: 8 });
             });
             playSfx("orange_triple");
             cooldown = 5000;
