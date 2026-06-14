@@ -964,12 +964,15 @@ const toggleFullscreen = async () => {
   const FIGHTER_COLORS = ["red", "blue", "green", "black", "white", "purple", "yellow", "orange"];
   const SECRET_FIGHTER_COLORS = ["brown", "pink"];
   const ONLINE_FIGHTER_COLORS = [...FIGHTER_COLORS, ...SECRET_FIGHTER_COLORS];
+  const RAINBOW_SUMMON_COLORS = [...FIGHTER_COLORS, ...SECRET_FIGHTER_COLORS];
   const RAINBOW_COLORS = ["#ef4444", "#f97316", "#facc15", "#22c55e", "#3b82f6", "#a855f7", "#f8fafc"];
   const MONOCHROME_COLORS = ["#020617", "#4b5563", "#9ca3af", "#f8fafc"];
-  const LADDER_TOTAL_MATCHES = FIGHTER_COLORS.length + 1;
+  const LADDER_TOTAL_MATCHES = FIGHTER_COLORS.length + 2;
   const LADDER_MIRROR_INDEX = FIGHTER_COLORS.length - 1;
-  const LADDER_BOSS_INDEX = FIGHTER_COLORS.length;
+  const LADDER_SECRET_INDEX = FIGHTER_COLORS.length;
+  const LADDER_BOSS_INDEX = FIGHTER_COLORS.length + 1;
   const randColor = () => randPick(FIGHTER_COLORS);
+  const randRainbowSummonColor = () => randPick(RAINBOW_SUMMON_COLORS);
   const isRainbowUser = (name) => String(name || "") === "Rainbow";
   const isMonochromeUser = (name) => String(name || "") === "Monochrome";
   const getLockedSecretColor = (name) => isRainbowUser(name) ? "rainbow" : isMonochromeUser(name) ? "monochrome" : null;
@@ -1118,9 +1121,10 @@ const toggleFullscreen = async () => {
     if (mode === "ladder") {
       const idx = ladderIndex;
       const isMirror = idx === LADDER_MIRROR_INDEX;
+      const isSecret = idx === LADDER_SECRET_INDEX;
       const isLast = idx === LADDER_BOSS_INDEX;
 
-      const oppColor = isLast ? "monochrome" : isMirror ? p1Color : ladderOppOrder[idx] || randColor();
+      const oppColor = isLast ? "monochrome" : isSecret ? (ladderOppOrder[idx] || randPick(SECRET_FIGHTER_COLORS)) : isMirror ? p1Color : ladderOppOrder[idx] || randColor();
       const diffByStep = idx <= 0 ? "easy" : idx <= 3 ? "medium" : "hard";
 
       return {
@@ -2642,7 +2646,7 @@ const getActiveRainbowSummon = (owner) => fighters.find((p) => p.isSummon && p.t
 const beginRainbowSummon = (fighter) => {
   if (!fighter.canSpecial2 || fighter.specialDisabled || fighter.frozen || fighter.hitstun || fighter.spearStunned || getActiveRainbowSummon(fighter)) return false;
 
-  const color = randColor();
+  const color = randRainbowSummonColor();
   const data = getColorData(color, "normal");
   const x = Math.max(30, Math.min(WORLD_W - 70, fighter.x + (fighter.facing > 0 ? fighter.width + 24 : -64)));
   const summon = makeFighter({
@@ -6388,7 +6392,7 @@ useEffect(() => {
               { key: "practice", title: "Practice", desc: "100-HP dummy (KO disappears) + Refresh button" },
               { key: "single", title: "Single Player", desc: "Fight an AI (best of 3)" },
               { key: "coop", title: "Multi Player", desc: "2v2: P1+P2 vs AI team (pick both enemies)" },
-              { key: "ladder", title: "Ladder", desc: "Face all the colors, then Monochrome" },
+              { key: "ladder", title: "Ladder", desc: "Face all the colors, a mirror, a secret fighter, then Monochrome" },
               { key: "offline", title: "1v1 Offline", desc: "Local PvP (P1 vs P2)" },
               { key: "online", title: "1v1 Online", desc: "Play against real players online" },
               { key: "achievements", title: "Achievements", desc: "Collect them all" },
@@ -6745,7 +6749,8 @@ useEffect(() => {
 
                   if (mode === "ladder") {
                     const others = FIGHTER_COLORS.filter((x) => x !== c);
-                    setLadderOppOrder(shuffle(others));
+                    const secretFight = randPick(SECRET_FIGHTER_COLORS);
+                    setLadderOppOrder([...shuffle(others), c, secretFight]);
                   }
 
                   setManagedTimeout(() => proceedAfterP1(), 0);

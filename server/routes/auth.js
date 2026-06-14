@@ -3,6 +3,7 @@ import bcryptjs from 'bcryptjs';
 import pool from '../db.js';
 import { signToken, verifyToken } from '../middleware/auth.js';
 import { isAllowedUsername, normalizeUsername, MAX_USERNAME_LENGTH } from '../usernameRules.js';
+import { ensureSpecialWins, withSpecialWins } from '../specialWins.js';
 
 const router = express.Router();
 
@@ -40,7 +41,8 @@ router.post('/register', async (req, res) => {
       [emailPlaceholder, cleanUsername, hash]
     );
 
-    const user = result.rows[0];
+    await ensureSpecialWins(pool, cleanUsername);
+    const user = withSpecialWins(result.rows[0]);
     const token = signToken(user.id, user.username);
 
     res.json({
@@ -77,13 +79,15 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const user = result.rows[0];
-    const valid = await bcryptjs.compare(password, user.password_hash);
+    const rawUser = result.rows[0];
+    const valid = await bcryptjs.compare(password, rawUser.password_hash);
 
     if (!valid) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    await ensureSpecialWins(pool, rawUser.username);
+    const user = withSpecialWins(rawUser);
     const token = signToken(user.id, user.username);
 
     res.json({
@@ -113,7 +117,7 @@ router.get('/me', verifyToken, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json(result.rows[0]);
+    res.json(withSpecialWins(result.rows[0]));
   } catch (err) {
     console.error('Me error:', err);
     res.status(500).json({ error: 'Server error' });

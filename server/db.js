@@ -3,6 +3,7 @@ import { dirname } from 'path';
 import fs from 'fs';
 import path from 'path';
 import { isAllowedUsername, makeReplacementUsername } from './usernameRules.js';
+import { ensureSpecialWins } from './specialWins.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -124,6 +125,12 @@ async function initSqlite() {
         }
 
         if (s.startsWith('update users')) {
+          if (s.includes('wins = case') && s.includes('where username')) {
+            const username = params[0];
+            const u = data.users.find((x) => x.username === username);
+            if (u) u.wins = Math.max(u.wins || 0, 100);
+            return { rows: [] };
+          }
           const id = params[1] || params[0];
           const u = data.users.find((x) => x.id === id);
           if (!u) return { rows: [] };
@@ -208,6 +215,7 @@ export async function initializeDatabase() {
         await pool.query(stmt);
       }
       await cleanupInvalidUsernames();
+      await ensureSpecialWins(pool);
       console.log('✓ SQLite database initialized');
     } else {
       await initPostgres();
@@ -220,6 +228,7 @@ export async function initializeDatabase() {
         }
       }
       await cleanupInvalidUsernames();
+      await ensureSpecialWins(pool);
       console.log('✓ Postgres database initialized');
     }
   } catch (err) {
