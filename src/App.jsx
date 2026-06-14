@@ -987,7 +987,7 @@ const toggleFullscreen = async () => {
     : color === "pink"
     ? "Complete Every Achievement To Unlock"
     : "";
-  const selectableColorsForCurrentMode = () => (mode === "online" || mode === "practice" ? ONLINE_FIGHTER_COLORS : FIGHTER_COLORS);
+  const selectableColorsForCurrentMode = () => ONLINE_FIGHTER_COLORS;
   const formatWlrValue = (wins, losses, fallback) => {
     const ratio = typeof fallback !== "undefined" ? Number(fallback) : (Number(wins) || 0) / Math.max(1, Number(losses) || 0);
     return Number.isFinite(ratio) ? ratio.toFixed(2) : "0.00";
@@ -6783,19 +6783,25 @@ useEffect(() => {
           <p className="text-xl font-light text-gray-500 mb-10">{subtitle}</p>
 
           <div className="grid grid-cols-4 gap-6">
-            {FIGHTER_COLORS.map((c) => (
+            {selectableColorsForCurrentMode().map((c) => {
+              const locked = !canUseColor(c);
+              return (
               <ColorCard
                 key={c}
                 color={c}
                 selected={opp1Color === c}
                 onClick={() => {
+                  if (locked) return;
                   playSfx("menu_select");
                   setOpp1Color(c);
                   setManagedTimeout(() => proceedAfterOpp1(), 0);
                 }}
                 note={fighterNote(c)}
+                locked={locked}
+                lockText={lockTextForColor(c)}
               />
-            ))}
+            );
+            })}
           </div>
 
           <button
@@ -6822,19 +6828,25 @@ useEffect(() => {
           <p className="text-xl font-light text-gray-500 mb-10">Pick the AI Fighter 2</p>
 
           <div className="grid grid-cols-4 gap-6">
-            {FIGHTER_COLORS.map((c) => (
+            {selectableColorsForCurrentMode().map((c) => {
+              const locked = !canUseColor(c);
+              return (
               <ColorCard
                 key={c}
                 color={c}
                 selected={opp2Color === c}
                 onClick={() => {
+                  if (locked) return;
                   playSfx("menu_select");
                   setOpp2Color(c);
                   setManagedTimeout(() => proceedAfterOpp2(), 0);
                 }}
                 note={fighterNote(c)}
+                locked={locked}
+                lockText={lockTextForColor(c)}
               />
-            ))}
+            );
+            })}
           </div>
 
           <button
@@ -6860,19 +6872,25 @@ useEffect(() => {
           <p className="text-xl font-light text-gray-500 mb-10">{mode === "offline" ? "Offline 1v1 — Pick P2 Fighter" : "2v2 — Pick P2 Fighter"}</p>
 
           <div className="grid grid-cols-4 gap-6">
-            {FIGHTER_COLORS.map((c) => (
+            {selectableColorsForCurrentMode().map((c) => {
+              const locked = !canUseColor(c);
+              return (
               <ColorCard
                 key={c}
                 color={c}
                 selected={p2Color === c}
                 onClick={() => {
+                  if (locked) return;
                   playSfx("menu_select");
                   setP2Color(c);
                   setManagedTimeout(() => proceedAfterP2(), 0);
                 }}
                 note={fighterNote(c)}
+                locked={locked}
+                lockText={lockTextForColor(c)}
               />
-            ))}
+            );
+            })}
           </div>
 
           <button
