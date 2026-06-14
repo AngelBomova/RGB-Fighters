@@ -961,26 +961,28 @@ const toggleFullscreen = async () => {
 
   const randPick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const randStage = () => randPick(["default", "recursion", "sky", "hourglass", "bottom"]);
-  const FIGHTER_COLORS = ["red", "blue", "green", "black", "white", "purple", "yellow", "orange"];
+  const FIGHTER_COLORS = ["red", "blue", "green", "black", "white", "purple", "yellow", "orange", "gray"];
   const SECRET_FIGHTER_COLORS = ["brown", "pink"];
   const ONLINE_FIGHTER_COLORS = [...FIGHTER_COLORS, ...SECRET_FIGHTER_COLORS];
   const RAINBOW_SUMMON_COLORS = [...FIGHTER_COLORS, ...SECRET_FIGHTER_COLORS];
+  const LADDER_POOL_COLORS = [...FIGHTER_COLORS, ...SECRET_FIGHTER_COLORS];
   const RAINBOW_COLORS = ["#ef4444", "#f97316", "#facc15", "#22c55e", "#3b82f6", "#a855f7", "#f8fafc"];
   const MONOCHROME_COLORS = ["#020617", "#4b5563", "#9ca3af", "#f8fafc"];
-  const LADDER_TOTAL_MATCHES = FIGHTER_COLORS.length + 2;
-  const LADDER_MIRROR_INDEX = FIGHTER_COLORS.length - 1;
-  const LADDER_SECRET_INDEX = FIGHTER_COLORS.length;
-  const LADDER_BOSS_INDEX = FIGHTER_COLORS.length + 1;
+  const TRANSPARENT_COLORS = ["#f8fafc", "#e5e7eb", "#d1d5db", "#cbd5e1"];
+  const LADDER_TOTAL_MATCHES = 10;
+  const LADDER_SUBBOSS_INDEX = 8;
+  const LADDER_BOSS_INDEX = 9;
   const randColor = () => randPick(FIGHTER_COLORS);
   const randRainbowSummonColor = () => randPick(RAINBOW_SUMMON_COLORS);
   const isRainbowUser = (name) => String(name || "") === "Rainbow";
   const isMonochromeUser = (name) => String(name || "") === "Monochrome";
-  const getLockedSecretColor = (name) => isRainbowUser(name) ? "rainbow" : isMonochromeUser(name) ? "monochrome" : null;
+  const isTransparentUser = (name) => String(name || "") === "Transparent";
+  const getLockedSecretColor = (name) => isRainbowUser(name) ? "rainbow" : isMonochromeUser(name) ? "monochrome" : isTransparentUser(name) ? "transparent" : null;
   const OFFLINE_ACHIEVEMENT_KEYS = FIGHTER_COLORS.flatMap((color) => ["easy", "medium", "hard"].map((difficulty) => `ladder:${color}:${difficulty}`));
   const hasAchievementKey = (key) => achievements.includes(key);
   const hasAllOfflineAchievements = OFFLINE_ACHIEVEMENT_KEYS.every(hasAchievementKey);
   const hasBrownUnlocked = !!user && hasAllOfflineAchievements;
-  const hasPinkUnlocked = !!user && hasAllOfflineAchievements && (Number(user?.wins) || 0) >= 100 && hasAchievementKey("online:rainbow") && hasAchievementKey("online:monochrome");
+  const hasPinkUnlocked = !!user && hasAllOfflineAchievements && (Number(user?.wins) || 0) >= 100 && hasAchievementKey("online:rainbow");
   const canUseColor = (color) => color !== "brown" && color !== "pink" ? true : color === "brown" ? hasBrownUnlocked : hasPinkUnlocked;
   const lockTextForColor = (color) => color === "brown"
     ? "Complete Every Offline Achievement To Unlock"
@@ -1028,6 +1030,10 @@ const toggleFullscreen = async () => {
       ? "Turret & Summon"
       : c === "monochrome"
       ? "Homing Blast & Floor Wave"
+      : c === "transparent"
+      ? "Burrow & Ground Pound"
+      : c === "gray"
+      ? "Wind & Hammer"
       : c === "brown"
       ? "Phase Shot & Armor"
       : c === "pink"
@@ -1120,11 +1126,10 @@ const toggleFullscreen = async () => {
 
     if (mode === "ladder") {
       const idx = ladderIndex;
-      const isMirror = idx === LADDER_MIRROR_INDEX;
-      const isSecret = idx === LADDER_SECRET_INDEX;
+      const isSubBoss = idx === LADDER_SUBBOSS_INDEX;
       const isLast = idx === LADDER_BOSS_INDEX;
 
-      const oppColor = isLast ? "monochrome" : isSecret ? (ladderOppOrder[idx] || randPick(SECRET_FIGHTER_COLORS)) : isMirror ? p1Color : ladderOppOrder[idx] || randColor();
+      const oppColor = isLast ? "monochrome" : isSubBoss ? "transparent" : ladderOppOrder[idx] || randPick(LADDER_POOL_COLORS);
       const diffByStep = idx <= 0 ? "easy" : idx <= 3 ? "medium" : "hard";
 
       return {
@@ -1328,6 +1333,14 @@ const toggleFullscreen = async () => {
         spearStunTimer: p.spearStunTimer,
         monochromeStunned: p.monochromeStunned,
         monochromeStunTimer: p.monochromeStunTimer,
+        transparentStunned: p.transparentStunned,
+        transparentStunTimer: p.transparentStunTimer,
+        transparentBurrowing: p.transparentBurrowing,
+        transparentBurrowTimer: p.transparentBurrowTimer,
+        transparentStrikeTimer: p.transparentStrikeTimer,
+        transparentPoundChargeTimer: p.transparentPoundChargeTimer,
+        transparentPoundActiveTimer: p.transparentPoundActiveTimer,
+        grayHammerTimer: p.grayHammerTimer,
         pinkParrying: p.pinkParrying,
         pinkParryTimer: p.pinkParryTimer,
         pinkParryDucking: p.pinkParryDucking,
@@ -1662,7 +1675,7 @@ const toggleFullscreen = async () => {
     const GRAVITY = 1.2;
     const JUMP_DISTANCE = 120;
 
-    const DARK_VARIANT = { red: "#b91c1c", blue: "#1d4ed8", green: "#15803d", black: "#4b5563", white: "#cbd5e1", purple: "#7e22ce", yellow: "#ca8a04", orange: "#c2410c", brown: "#451a03", pink: "#be185d" };
+    const DARK_VARIANT = { red: "#b91c1c", blue: "#1d4ed8", green: "#15803d", black: "#111827", white: "#cbd5e1", purple: "#7e22ce", yellow: "#ca8a04", orange: "#c2410c", gray: "#d1d5db", brown: "#451a03", pink: "#be185d" };
 
     const toRGBA = (hex, a) => {
       const h = hex.replace("#", "");
@@ -1691,10 +1704,14 @@ const toggleFullscreen = async () => {
             return { hex: "#facc15", name: "Yellow", type: "electric" };
           case "orange":
             return { hex: "#f97316", name: "Orange", type: "explosion" };
+          case "gray":
+            return { hex: "#6b7280", name: "Gray", type: "gray" };
           case "rainbow":
             return { hex: "#ec4899", name: "Rainbow", type: "rainbow" };
           case "monochrome":
             return { hex: "#6b7280", name: "Monochrome", type: "monochrome" };
+          case "transparent":
+            return { hex: "#e5e7eb", name: "Transparent", type: "transparent" };
           case "brown":
             return { hex: "#92400e", name: "Brown", type: "brown" };
           case "pink":
@@ -1885,6 +1902,16 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         spearStunTimer: 0,
         monochromeStunned: false,
         monochromeStunTimer: 0,
+        transparentStunned: false,
+        transparentStunTimer: 0,
+        transparentBurrowing: false,
+        transparentBurrowTimer: 0,
+        transparentStrikeTimer: 0,
+        transparentPoundChargeTimer: 0,
+        transparentPoundActiveTimer: 0,
+        transparentPoundHitIds: {},
+        grayHammerTimer: 0,
+        grayHammerHitIds: {},
         pinkParrying: false,
         pinkParryTimer: 0,
         pinkParryDucking: false,
@@ -2081,6 +2108,16 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           p.spearStunTimer = 0;
           p.monochromeStunned = false;
           p.monochromeStunTimer = 0;
+          p.transparentStunned = false;
+          p.transparentStunTimer = 0;
+          p.transparentBurrowing = false;
+          p.transparentBurrowTimer = 0;
+          p.transparentStrikeTimer = 0;
+          p.transparentPoundChargeTimer = 0;
+          p.transparentPoundActiveTimer = 0;
+          p.transparentPoundHitIds = {};
+          p.grayHammerTimer = 0;
+          p.grayHammerHitIds = {};
           p.pinkParrying = false;
           p.pinkParryTimer = 0;
           p.pinkParryDucking = false;
@@ -2136,6 +2173,16 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         def.frozenTimer = 0;
         def.monochromeStunned = false;
         def.monochromeStunTimer = 0;
+        def.transparentStunned = false;
+        def.transparentStunTimer = 0;
+        def.transparentBurrowing = false;
+        def.transparentBurrowTimer = 0;
+        def.transparentStrikeTimer = 0;
+        def.transparentPoundChargeTimer = 0;
+        def.transparentPoundActiveTimer = 0;
+        def.transparentPoundHitIds = {};
+        def.grayHammerTimer = 0;
+        def.grayHammerHitIds = {};
         def.brownStunned = false;
         def.brownStunTimer = 0;
       }
@@ -2228,6 +2275,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
     const applyDamage = (attacker, defender, attackType, extra = {}) => {
       if (!defender.alive) return 0;
       if (defender.brownPhasing) return 0;
+      if (defender.transparentBurrowing) return 0;
       if (defender.type === "rainbow" && defender.rainbowTurretTimer > 0 && !extra.ignoreRainbowInvulnerable) return 0;
       if (attackType === "iceball" && defender.frozen) return 0;
 
@@ -2314,9 +2362,31 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           freezeFrames = 180;
           break;
         case "pinkplus":
-          damage = 5;
+          damage = 4;
           knockback = 7;
           hitstunFrames = 10;
+          break;
+        case "graywind":
+          damage = 5;
+          knockback = 34;
+          hitstunFrames = 16;
+          break;
+        case "grayhammer":
+          damage = 6;
+          knockback = 12;
+          hitstunFrames = 14;
+          break;
+        case "transparentrise":
+          damage = 12;
+          knockback = 10;
+          launchUp = true;
+          hitstunFrames = 18;
+          break;
+        case "transparentpound":
+          damage = 3;
+          knockback = 0;
+          hitstunFrames = 8;
+          freezeFrames = 180;
           break;
         case "brownshift":
           damage = 5;
@@ -2356,7 +2426,9 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         case "poisonorb":
           damage = 5;
           knockback = 3;
-          applyPoisonTicks = 15;
+          slowFrames = 480;
+          applyJumpDisable = 900;
+          applyPoisonTicks = 10;
           break;
         case "blackball":
           damage = 4;
@@ -2493,6 +2565,8 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           defender.frozenTimer = freezeFrames;
           defender.monochromeStunned = attackType === "monochromewave";
           defender.monochromeStunTimer = attackType === "monochromewave" ? freezeFrames : 0;
+          defender.transparentStunned = attackType === "transparentpound";
+          defender.transparentStunTimer = attackType === "transparentpound" ? freezeFrames : 0;
           defender.brownStunned = attackType === "brownshift";
           defender.brownStunTimer = attackType === "brownshift" ? freezeFrames : 0;
         }
@@ -2751,12 +2825,17 @@ const beginPinkPlus = (fighter) => {
   const cx = fighter.x + fighter.width / 2;
   const cy = fighter.y + fighter.height / 2;
   const speed = 8.5;
+  const diagonalSpeed = speed / Math.sqrt(2);
   const pinkPlusId = `pinkplus-${Date.now()}-${Math.random()}`;
   [
     { vx: speed, vy: 0, attackHeight: "high" },
-    { vx: -speed, vy: 0, attackHeight: "high" },
+    { vx: diagonalSpeed, vy: -diagonalSpeed, attackHeight: "low" },
     { vx: 0, vy: -speed, attackHeight: "low" },
+    { vx: -diagonalSpeed, vy: -diagonalSpeed, attackHeight: "low" },
+    { vx: -speed, vy: 0, attackHeight: "high" },
+    { vx: -diagonalSpeed, vy: diagonalSpeed, attackHeight: "overhead" },
     { vx: 0, vy: speed, attackHeight: "overhead" },
+    { vx: diagonalSpeed, vy: diagonalSpeed, attackHeight: "overhead" },
   ].forEach((shot) => {
     projectiles.current.push({
       x: cx,
@@ -2856,6 +2935,101 @@ const beginBrownArmorCharge = (fighter) => {
   return true;
 };
 
+const beginGrayWind = (fighter) => {
+  if (!fighter.canProjectile || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging || fighter.pinkParrying || fighter.brownPhasing || fighter.brownCharging || fighter.transparentBurrowing) return false;
+
+  stopDefense(fighter);
+  projectiles.current.push({
+    x: fighter.x + (fighter.facing > 0 ? fighter.width : 0),
+    y: fighter.y + 25,
+    vx: fighter.facing * 12,
+    vy: 0,
+    owner: fighter,
+    team: fighter.team,
+    type: "graywind",
+    attackHeight: "mid",
+    color: "#9ca3af",
+    radius: 13,
+  });
+
+  fighter.canProjectile = false;
+  playSfx("sloworb");
+  setManagedTimeout(() => {
+    fighter.canProjectile = true;
+  }, 3000);
+  return true;
+};
+
+const beginGrayHammer = (fighter) => {
+  if (!fighter.canSpecial2 || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging || fighter.pinkParrying || fighter.brownPhasing || fighter.brownCharging || fighter.transparentBurrowing || fighter.grayHammerTimer > 0) return false;
+
+  stopDefense(fighter);
+  fighter.vx = 0;
+  fighter.grayHammerTimer = 120;
+  fighter.grayHammerHitIds = {};
+  fighter.canSpecial2 = false;
+  playSfx("uppercut");
+  setManagedTimeout(() => {
+    fighter.canSpecial2 = true;
+  }, 4000);
+  return true;
+};
+
+const beginTransparentBurrow = (fighter) => {
+  if (!fighter.canProjectile || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging || fighter.pinkParrying || fighter.brownPhasing || fighter.brownCharging || fighter.transparentBurrowing || fighter.transparentPoundChargeTimer > 0) return false;
+
+  stopDefense(fighter);
+  fighter.transparentBurrowing = true;
+  fighter.transparentBurrowTimer = 180;
+  fighter.transparentStrikeTimer = 0;
+  fighter.vx = fighter.facing * 7;
+  fighter.vy = 0;
+  fighter.canProjectile = false;
+  playSfx("dash");
+  setManagedTimeout(() => {
+    fighter.canProjectile = true;
+  }, 8000);
+  return true;
+};
+
+const surfaceTransparent = (fighter) => {
+  if (!fighter?.transparentBurrowing) return false;
+  fighter.transparentBurrowing = false;
+  fighter.transparentBurrowTimer = 0;
+  fighter.transparentStrikeTimer = 24;
+  fighter.vx = 0;
+  fighter.vy = -18;
+  fighter.grounded = false;
+  playSfx("uppercut");
+  fighters
+    .filter((target) => target.alive && target.team !== fighter.team)
+    .forEach((target) => {
+      if (Math.abs(centerX(target) - centerX(fighter)) <= 48) {
+        applyDamage(fighter, target, "transparentrise", {
+          attackHeight: "unblockable",
+          knockbackDir: target.x < fighter.x ? -1 : 1,
+        });
+      }
+    });
+  return true;
+};
+
+const beginTransparentPound = (fighter) => {
+  if (!fighter.canSpecial2 || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging || fighter.pinkParrying || fighter.brownPhasing || fighter.brownCharging || fighter.transparentBurrowing || fighter.transparentPoundChargeTimer > 0 || fighter.transparentPoundActiveTimer > 0) return false;
+
+  stopDefense(fighter);
+  fighter.vx = 0;
+  fighter.transparentPoundChargeTimer = 60;
+  fighter.transparentPoundActiveTimer = 0;
+  fighter.transparentPoundHitIds = {};
+  fighter.canSpecial2 = false;
+  playSfx("charge_start");
+  setManagedTimeout(() => {
+    fighter.canSpecial2 = true;
+  }, 6000);
+  return true;
+};
+
   const beginMelee = (ai, attackType) => {
     if (ai.attacking || ai.hitstun || ai.frozen || ai.pinkParrying || ai.brownPhasing || ai.brownCharging) return false;
 
@@ -2910,8 +3084,10 @@ const beginBrownArmorCharge = (fighter) => {
 const beginProjectile = (ai) => {
   if (ai.type === "rainbow") return beginRainbowTurret(ai);
   if (ai.type === "monochrome") return beginMonochromeMissile(ai);
+  if (ai.type === "transparent") return beginTransparentBurrow(ai);
   if (ai.type === "pink") return beginPinkPlus(ai);
   if (ai.type === "brown") return beginBrownShift(ai);
+  if (ai.type === "gray") return beginGrayWind(ai);
   if (!ai.canProjectile || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging || ai.pinkParrying || ai.brownPhasing || ai.brownCharging) return false;
 
   const projX = ai.x + (ai.facing > 0 ? ai.width : 0);
@@ -3402,6 +3578,12 @@ const updateAI = (ai) => {
     ai.x < 55 ||
     ai.x + ai.width > WORLD_W - 55;
 
+  if (ai.transparentBurrowing) {
+    ai.vx = (dx >= 0 ? 1 : -1) * 7;
+    if (abs < 46 || ai.transparentBurrowTimer < 30) surfaceTransparent(ai);
+    return;
+  }
+
   if (ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging) {
     stopDefense(ai);
     ai.vx = 0;
@@ -3582,6 +3764,26 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     rand() < getAiSettings(ai).specialChance
   ) {
     if (beginMonochromeWave(ai)) return;
+  }
+
+  if (
+    ai.type === "transparent" &&
+    ai.canSpecial2 &&
+    !ai.specialDisabled &&
+    abs < 520 &&
+    rand() < getAiSettings(ai).specialChance
+  ) {
+    if (beginTransparentPound(ai)) return;
+  }
+
+  if (
+    ai.type === "gray" &&
+    ai.canSpecial2 &&
+    !ai.specialDisabled &&
+    abs < 120 &&
+    rand() < getAiSettings(ai).specialChance
+  ) {
+    if (beginGrayHammer(ai)) return;
   }
 
   if (
@@ -4023,6 +4225,16 @@ if (hpW > 0) {
         p.spearStunTimer = 0;
         p.monochromeStunned = false;
         p.monochromeStunTimer = 0;
+        p.transparentStunned = false;
+        p.transparentStunTimer = 0;
+        p.transparentBurrowing = false;
+        p.transparentBurrowTimer = 0;
+        p.transparentStrikeTimer = 0;
+        p.transparentPoundChargeTimer = 0;
+        p.transparentPoundActiveTimer = 0;
+        p.transparentPoundHitIds = {};
+        p.grayHammerTimer = 0;
+        p.grayHammerHitIds = {};
         p.pinkParrying = false;
         p.pinkParryTimer = 0;
         p.pinkParryDucking = false;
@@ -4104,6 +4316,16 @@ if (hpW > 0) {
         p.spearStunTimer = 0;
         p.monochromeStunned = false;
         p.monochromeStunTimer = 0;
+        p.transparentStunned = false;
+        p.transparentStunTimer = 0;
+        p.transparentBurrowing = false;
+        p.transparentBurrowTimer = 0;
+        p.transparentStrikeTimer = 0;
+        p.transparentPoundChargeTimer = 0;
+        p.transparentPoundActiveTimer = 0;
+        p.transparentPoundHitIds = {};
+        p.grayHammerTimer = 0;
+        p.grayHammerHitIds = {};
         p.pinkParrying = false;
         p.pinkParryTimer = 0;
         p.pinkParryDucking = false;
@@ -4304,6 +4526,12 @@ if (hpW > 0) {
           p.dashTimer--;
         }
 
+        if (getHeld("special1") && p.transparentBurrowing) {
+          surfaceTransparent(p);
+          clearHeld("special1");
+          return;
+        }
+
         if (getHeld("special1") && p.canProjectile && !p.specialDisabled) {
           const projX = p.x + (p.facing > 0 ? p.width : 0);
           const projY = p.y + 25;
@@ -4319,6 +4547,12 @@ if (hpW > 0) {
             return;
           } else if (p.type === "monochrome") {
             if (beginMonochromeMissile(p)) clearHeld("special1");
+            return;
+          } else if (p.type === "transparent") {
+            if (beginTransparentBurrow(p)) clearHeld("special1");
+            return;
+          } else if (p.type === "gray") {
+            if (beginGrayWind(p)) clearHeld("special1");
             return;
           } else if (p.type === "pink") {
             if (beginPinkPlus(p)) clearHeld("special1");
@@ -4421,6 +4655,10 @@ if (hpW > 0) {
               if (beginRainbowSummon(p)) clearHeld("special2");
             } else if (p.type === "monochrome") {
               if (beginMonochromeWave(p)) clearHeld("special2");
+            } else if (p.type === "transparent") {
+              if (beginTransparentPound(p)) clearHeld("special2");
+            } else if (p.type === "gray") {
+              if (beginGrayHammer(p)) clearHeld("special2");
             } else if (p.type === "pink") {
               if (beginPinkParry(p)) clearHeld("special2");
             } else if (p.type === "brown") {
@@ -4581,7 +4819,34 @@ if (hpW > 0) {
         return;
       }
 
+      if (p.transparentBurrowing) {
+        p.transparentBurrowTimer--;
+        p.vy = 0;
+        p.blocking = false;
+        p.ducking = false;
+        p.attacking = false;
+        p.attackTimer = 0;
+        p.attackType = "";
+        p.attackHeight = "";
+        p.y = groundLevel - p.height;
+        p.x += p.vx;
+        if (p.x < 0) {
+          p.x = 0;
+          p.vx = Math.abs(p.vx || 7);
+          p.facing = 1;
+        }
+        if (p.x + p.width > WORLD_W) {
+          p.x = WORLD_W - p.width;
+          p.vx = -Math.abs(p.vx || 7);
+          p.facing = -1;
+        }
+        if (p.transparentBurrowTimer <= 0) surfaceTransparent(p);
+        updateHitboxes(p);
+        return;
+      }
+
       if (p.brownInvulnTimer > 0) p.brownInvulnTimer--;
+      if (p.transparentStrikeTimer > 0) p.transparentStrikeTimer--;
 
       if (p.rainbowTurretTimer > 0) {
         p.rainbowTurretTimer--;
@@ -4614,6 +4879,66 @@ if (hpW > 0) {
       }
 
       if (p.damageAmpTimer > 0) p.damageAmpTimer--;
+
+      if (p.grayHammerTimer > 0) {
+        p.grayHammerTimer--;
+        p.vx *= 0.6;
+        p.blocking = false;
+        p.ducking = false;
+        const hammerRadius = 92;
+        fighters
+          .filter((target) => target.alive && target.team !== p.team && !p.grayHammerHitIds?.[target.id])
+          .forEach((target) => {
+            const dx = centerX(target) - centerX(p);
+            const dy = centerY(target) - centerY(p);
+            if (Math.sqrt(dx * dx + dy * dy) <= hammerRadius) {
+              p.grayHammerHitIds = p.grayHammerHitIds || {};
+              p.grayHammerHitIds[target.id] = true;
+              applyDamage(p, target, "grayhammer", {
+                attackHeight: "overhead",
+                knockbackDir: dx < 0 ? -1 : 1,
+              });
+            }
+          });
+        if (p.grayHammerTimer <= 0) {
+          p.grayHammerTimer = 0;
+          p.grayHammerHitIds = {};
+        }
+      }
+
+      if (p.transparentPoundChargeTimer > 0) {
+        p.transparentPoundChargeTimer--;
+        p.vx = 0;
+        p.blocking = false;
+        p.ducking = false;
+        p.attacking = false;
+        p.attackTimer = 0;
+        p.attackType = "";
+        p.attackHeight = "";
+        if (p.transparentPoundChargeTimer <= 0) {
+          p.transparentPoundActiveTimer = 18;
+          p.transparentPoundHitIds = {};
+          playSfx("white_drop");
+        }
+      }
+
+      if (p.transparentPoundActiveTimer > 0) {
+        p.transparentPoundActiveTimer--;
+        fighters
+          .filter((target) => target.alive && target.team !== p.team && target.grounded && !p.transparentPoundHitIds?.[target.id])
+          .forEach((target) => {
+            p.transparentPoundHitIds = p.transparentPoundHitIds || {};
+            p.transparentPoundHitIds[target.id] = true;
+            applyDamage(p, target, "transparentpound", {
+              attackHeight: "unblockable",
+              knockbackDir: 0,
+            });
+          });
+        if (p.transparentPoundActiveTimer <= 0) {
+          p.transparentPoundActiveTimer = 0;
+          p.transparentPoundHitIds = {};
+        }
+      }
 
       if (p.spearStunned) {
         p.spearStunTimer--;
@@ -4718,12 +5043,15 @@ if (p.aiBlockHoldTimer > 0) {
       if (p.frozen) {
         p.frozenTimer--;
         if (p.monochromeStunTimer > 0) p.monochromeStunTimer--;
+        if (p.transparentStunTimer > 0) p.transparentStunTimer--;
         if (p.brownStunTimer > 0) p.brownStunTimer--;
         if (p.frozenTimer <= 0) {
           p.frozen = false;
           p.frozenTimer = 0;
           p.monochromeStunned = false;
           p.monochromeStunTimer = 0;
+          p.transparentStunned = false;
+          p.transparentStunTimer = 0;
           p.brownStunned = false;
           p.brownStunTimer = 0;
         }
@@ -4975,6 +5303,23 @@ if (p.aiBlockHoldTimer > 0) {
         return;
       }
 
+      if (proj.type === "graywind") {
+        const swirl = Math.floor(Date.now() / 70) % 3;
+        ctx.strokeStyle = "#f8fafc";
+        ctx.lineWidth = 3;
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.ellipse(proj.x, proj.y, proj.radius + i * 5, Math.max(4, proj.radius - i * 2), (swirl + i) * 0.8, 0, Math.PI * 1.7);
+          ctx.stroke();
+        }
+        ctx.fillStyle = "rgba(156,163,175,0.45)";
+        ctx.beginPath();
+        ctx.ellipse(proj.x, proj.y, proj.radius * 1.5, proj.radius * 0.75, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        return;
+      }
+
       if (proj.type === "brownshift") {
         ctx.fillStyle = "#92400e";
         ctx.fillRect(proj.x - 10, proj.y - 15, 20, 30);
@@ -5018,6 +5363,24 @@ if (p.aiBlockHoldTimer > 0) {
 
       const drawHeight = p.ducking ? p.height * 0.6 : p.height;
       const drawY = p.ducking ? p.y + p.height * 0.4 : p.y;
+
+      if (p.transparentBurrowing) {
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = "rgba(15,23,42,0.7)";
+        ctx.beginPath();
+        ctx.ellipse(p.x + p.width / 2, groundLevel - 6, p.width * 0.8, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.restore();
+        return;
+      }
+
+      if (p.transparentStrikeTimer > 0) {
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = "rgba(229,231,235,0.75)";
+        ctx.fillRect(p.x - 8, 0, p.width + 16, groundLevel);
+        ctx.globalAlpha = 1;
+      }
 
       if (p.frozen) {
         ctx.globalAlpha = 0.7;
@@ -5092,6 +5455,16 @@ if (p.aiBlockHoldTimer > 0) {
         ctx.globalAlpha = 1;
       }
 
+      if (p.transparentStunned) {
+        ctx.globalAlpha = 0.8;
+        ctx.strokeStyle = TRANSPARENT_COLORS[Math.floor(Date.now() / 100) % TRANSPARENT_COLORS.length];
+        ctx.lineWidth = 5;
+        ctx.setLineDash([6, 5]);
+        ctx.strokeRect(p.x - 8, drawY - 8, p.width + 16, drawHeight + 16);
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+      }
+
       if (p.brownStunned) {
         ctx.globalAlpha = 0.75;
         ctx.strokeStyle = "#92400e";
@@ -5131,6 +5504,53 @@ if (p.aiBlockHoldTimer > 0) {
         ctx.lineWidth = 5;
         ctx.strokeRect(p.x - 10, drawY - 10, p.width + 20, drawHeight + 20);
         ctx.globalAlpha = 1;
+      }
+
+      if (p.transparentPoundChargeTimer > 0) {
+        ctx.globalAlpha = 0.55;
+        ctx.strokeStyle = "#f8fafc";
+        ctx.lineWidth = 4;
+        ctx.setLineDash([8, 6]);
+        const pulse = 24 + (60 - p.transparentPoundChargeTimer) * 2;
+        ctx.beginPath();
+        ctx.arc(p.x + p.width / 2, drawY + drawHeight / 2, pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.transparentPoundActiveTimer > 0) {
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = "rgba(229,231,235,0.8)";
+        ctx.fillRect(0, groundLevel - 12, WORLD_W, 12);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.grayHammerTimer > 0) {
+        const progress = (120 - p.grayHammerTimer) / 120;
+        const angle = progress * Math.PI * 6;
+        const cx = p.x + p.width / 2;
+        const cy = drawY + drawHeight / 2;
+        const length = 82;
+        const headX = cx + Math.cos(angle) * length;
+        const headY = cy + Math.sin(angle) * length;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+        ctx.fillStyle = "#9ca3af";
+        ctx.fillRect(0, -4, length, 8);
+        ctx.fillStyle = "#4b5563";
+        ctx.fillRect(length - 5, -15, 20, 30);
+        ctx.restore();
+        ctx.strokeStyle = "rgba(248,250,252,0.8)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, length, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255,255,255,0.2)";
+        ctx.beginPath();
+        ctx.arc(headX, headY, 6, 0, Math.PI * 2);
+        ctx.fill();
       }
 
       if (p.pinkParrying) {
@@ -5243,6 +5663,16 @@ if (p.type === "rainbow") {
   ctx.fillStyle = p.color;
 }
 ctx.fillRect(p.x, drawY, p.width, drawHeight);
+
+if (p.type === "transparent") {
+  const square = 10;
+  for (let yy = 0; yy < drawHeight; yy += square) {
+    for (let xx = 0; xx < p.width; xx += square) {
+      ctx.fillStyle = ((xx / square + yy / square) % 2 === 0) ? "#f8fafc" : "#cbd5e1";
+      ctx.fillRect(p.x + xx, drawY + yy, Math.min(square, p.width - xx), Math.min(square, drawHeight - yy));
+    }
+  }
+}
 
 ctx.strokeStyle = "#000000";
 ctx.lineWidth = 4;
@@ -5476,6 +5906,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
             if (!target.alive) continue;
             if (target.team === proj.team) continue;
             if (target.brownPhasing) continue;
+            if (target.transparentBurrowing) continue;
 
             if (proj.attackHeight === "high" && target.ducking) continue;
 
@@ -5554,16 +5985,12 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 });
                 landBrownShift(phaseOwner, target.x + target.width / 2 - (phaseOwner?.width || 40) / 2);
               } else if (proj.type === "monochromeball") {
-                const blocked = canBlockAttack(proj.owner, target, "monochromeball", proj.attackHeight);
-                const damageDone = applyDamage(proj.owner, target, "monochromeball", {
+                applyDamage(proj.owner, target, "monochromeball", {
                   attackHeight: proj.attackHeight,
                   isProjectile: true,
                   knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
                   ignoreRainbowInvulnerable: !!proj.reflected,
                 });
-                if (!blocked && damageDone > 0 && proj.owner?.alive) {
-                  proj.owner.health = Math.min(proj.owner.maxHealth || 100, proj.owner.health + 10);
-                }
               } else if (proj.type === "yellowspear") {
                 const blocked = canBlockAttack(proj.owner, target, "yellowspear", proj.attackHeight);
                 applyDamage(proj.owner, target, "yellowspear", {
@@ -5606,6 +6033,17 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                     proj.owner.health = Math.min(proj.owner.maxHealth || 100, proj.owner.health + 5);
                   }
                 }
+              } else if (proj.type === "poisonorb") {
+                const blocked = canBlockAttack(proj.owner, target, "poisonorb", proj.attackHeight);
+                const damageDone = applyDamage(proj.owner, target, "poisonorb", {
+                  attackHeight: proj.attackHeight,
+                  isProjectile: true,
+                  knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
+                  ignoreRainbowInvulnerable: !!proj.reflected,
+                });
+                if (!blocked && damageDone > 0 && proj.owner?.alive && proj.owner.type !== "monochrome") {
+                  proj.owner.health = Math.min(proj.owner.maxHealth || 100, proj.owner.health + 5);
+                }
               } else {
                 applyDamage(proj.owner, target, proj.type, {
                   attackHeight: proj.attackHeight,
@@ -5644,7 +6082,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
       projectiles.current.forEach(drawProjectile);
       fighters.forEach(drawFighter);
 
-      const fighterBarColor = (fighter) => fighter.type === "rainbow" ? "rainbow" : fighter.type === "monochrome" ? "monochrome" : fighter.color;
+      const fighterBarColor = (fighter) => fighter.type === "rainbow" ? "rainbow" : fighter.type === "monochrome" ? "monochrome" : fighter.type === "transparent" ? "#e5e7eb" : fighter.color;
 
       if (!is2v2) {
         const f1 = fighters.find((f) => f.team === 1);
@@ -5768,7 +6206,7 @@ useEffect(() => {
     if (!charSelect) return null;
     const matchId = charSelect.matchId || (matched && matched.matchId) || (onlineMatchRef.current && onlineMatchRef.current.matchId);
     const lockedSecretColor = charSelect.lockedSecretColor || getLockedSecretColor(user?.username);
-    const lockedSecretName = lockedSecretColor === "monochrome" ? "Monochrome" : "Rainbow";
+    const lockedSecretName = lockedSecretColor === "monochrome" ? "Monochrome" : lockedSecretColor === "transparent" ? "Transparent" : "Rainbow";
     return (
       <div className="fixed inset-0 bg-black/10 backdrop-blur-[2px] z-50 flex items-center justify-center">
         <div className="bg-white/95 rounded-2xl p-6 max-w-4xl w-full mx-4 shadow-2xl">
@@ -6229,6 +6667,8 @@ useEffect(() => {
         ? "rgba(250, 204, 21, 0.24)"
         : color === "orange"
         ? "rgba(249, 115, 22, 0.22)"
+        : color === "gray"
+        ? "rgba(107, 114, 128, 0.22)"
         : color === "brown"
         ? "rgba(146, 64, 14, 0.24)"
         : color === "pink"
@@ -6250,6 +6690,8 @@ useEffect(() => {
         ? "#ca8a04"
         : color === "orange"
         ? "#f97316"
+        : color === "gray"
+        ? "#6b7280"
         : color === "brown"
         ? "#92400e"
         : color === "pink"
@@ -6271,6 +6713,8 @@ useEffect(() => {
         ? "bg-yellow-300 border-yellow-600"
         : color === "orange"
         ? "bg-orange-500 border-orange-700"
+        : color === "gray"
+        ? "bg-gray-500 border-gray-300"
         : color === "brown"
         ? "bg-amber-900 border-amber-950"
         : color === "pink"
@@ -6379,24 +6823,6 @@ useEffect(() => {
                     style={hasAchievement("online:rainbow") ? { filter: "drop-shadow(0 0 12px rgba(168,85,247,0.8))" } : {}}
                   >
                     🌟
-                  </div>
-                </div>
-                <div
-                  className={`rounded-3xl border p-5 flex items-center justify-between gap-4 ${
-                    hasAchievement("online:monochrome")
-                      ? "border-yellow-300 bg-yellow-50"
-                      : "border-gray-100 bg-gray-50"
-                  }`}
-                >
-                  <div>
-                    <div className="text-lg text-gray-900 font-light">Monochrome Slayer</div>
-                    <div className="text-xs text-gray-500 font-light">Beat Monochrome in 1v1 Online</div>
-                  </div>
-                  <div
-                    className={`text-4xl ${hasAchievement("online:monochrome") ? "" : "grayscale opacity-25"}`}
-                    style={hasAchievement("online:monochrome") ? { filter: "drop-shadow(0 0 12px rgba(250,204,21,0.9))" } : {}}
-                  >
-                    ⭐
                   </div>
                 </div>
               </div>
@@ -6781,9 +7207,7 @@ useEffect(() => {
                   setP1Color(c);
 
                   if (mode === "ladder") {
-                    const others = FIGHTER_COLORS.filter((x) => x !== c);
-                    const secretFight = randPick(SECRET_FIGHTER_COLORS);
-                    setLadderOppOrder([...shuffle(others), c, secretFight]);
+                    setLadderOppOrder(shuffle(LADDER_POOL_COLORS).slice(0, 8));
                   }
 
                   setManagedTimeout(() => proceedAfterP1(), 0);

@@ -228,9 +228,6 @@ async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId) {
       if (loserChar === 'rainbow') {
         await unlockAchievement(winnerId, 'online:rainbow');
       }
-      if (loserChar === 'monochrome') {
-        await unlockAchievement(winnerId, 'online:monochrome');
-      }
     }
 
     const p1Data = await pool.query('SELECT elo, wins, losses FROM users WHERE id = $1', [match.p1.userId]);
@@ -407,7 +404,13 @@ io.on('connection', (socket) => {
 
     const isP1 = socket.id === match.p1.socketId;
     const playerUsername = isP1 ? match.p1.username : match.p2.username;
-    const selectedCharacter = playerUsername === 'Rainbow' ? 'rainbow' : playerUsername === 'Monochrome' ? 'monochrome' : character;
+    const selectedCharacter = playerUsername === 'Rainbow'
+      ? 'rainbow'
+      : playerUsername === 'Monochrome'
+        ? 'monochrome'
+        : playerUsername === 'Transparent'
+          ? 'transparent'
+          : character;
     if (isP1) {
       match.p1Char = selectedCharacter;
       match.p1Ready = true;
