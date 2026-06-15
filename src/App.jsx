@@ -1033,7 +1033,7 @@ const toggleFullscreen = async () => {
       : c === "transparent"
       ? "Burrow & Ground Pound"
       : c === "gray"
-      ? "Wind & Hammer"
+      ? "Wind & Field Control"
       : c === "brown"
       ? "Phase Shot & Armor"
       : c === "pink"
