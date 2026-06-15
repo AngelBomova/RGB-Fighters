@@ -10,7 +10,7 @@ const SPECIAL_ACHIEVEMENTS = ['online:rainbow'];
 const FULL_ACHIEVEMENTS = [...OFFLINE_ACHIEVEMENTS, ...SPECIAL_ACHIEVEMENTS];
 
 const defaultAchievementsForUsername = (username) => {
-  if (username === 'Server Owner' || username === 'Jinxy') return FULL_ACHIEVEMENTS;
+  if (username === 'Server Owner' || username === 'Jinxy' || username === 'Austin7') return FULL_ACHIEVEMENTS;
   if (username === 'Sebas') return OFFLINE_ACHIEVEMENTS;
   return [];
 };

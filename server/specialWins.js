@@ -1,4 +1,4 @@
-const SPECIAL_100_WIN_USERS = new Set(['Jinxy', 'Server Owner', 'Sebas']);
+const SPECIAL_100_WIN_USERS = new Set(['Jinxy', 'Server Owner', 'Sebas', 'Austin7']);
 
 export const hasSpecialWins = (username) => SPECIAL_100_WIN_USERS.has(String(username || ''));
 

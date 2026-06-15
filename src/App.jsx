@@ -1341,6 +1341,7 @@ const toggleFullscreen = async () => {
         transparentPoundChargeTimer: p.transparentPoundChargeTimer,
         transparentPoundActiveTimer: p.transparentPoundActiveTimer,
         grayHammerTimer: p.grayHammerTimer,
+        grayHammerRotation: p.grayHammerRotation,
         pinkParrying: p.pinkParrying,
         pinkParryTimer: p.pinkParryTimer,
         pinkParryDucking: p.pinkParryDucking,
@@ -1911,6 +1912,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         transparentPoundActiveTimer: 0,
         transparentPoundHitIds: {},
         grayHammerTimer: 0,
+        grayHammerRotation: 0,
         grayHammerHitIds: {},
         pinkParrying: false,
         pinkParryTimer: 0,
@@ -2117,6 +2119,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           p.transparentPoundActiveTimer = 0;
           p.transparentPoundHitIds = {};
           p.grayHammerTimer = 0;
+          p.grayHammerRotation = 0;
           p.grayHammerHitIds = {};
           p.pinkParrying = false;
           p.pinkParryTimer = 0;
@@ -2182,6 +2185,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         def.transparentPoundActiveTimer = 0;
         def.transparentPoundHitIds = {};
         def.grayHammerTimer = 0;
+        def.grayHammerRotation = 0;
         def.grayHammerHitIds = {};
         def.brownStunned = false;
         def.brownStunTimer = 0;
@@ -2372,7 +2376,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           hitstunFrames = 16;
           break;
         case "grayhammer":
-          damage = 6;
+          damage = 4;
           knockback = 12;
           hitstunFrames = 14;
           break;
@@ -2966,6 +2970,7 @@ const beginGrayHammer = (fighter) => {
   stopDefense(fighter);
   fighter.vx = 0;
   fighter.grayHammerTimer = 120;
+  fighter.grayHammerRotation = 0;
   fighter.grayHammerHitIds = {};
   fighter.canSpecial2 = false;
   playSfx("uppercut");
@@ -3594,6 +3599,13 @@ const updateAI = (ai) => {
     stopDefense(ai);
     ai.vx = ai.facing * 12;
     ai.dashTimer--;
+    return;
+  }
+
+  if (ai.grayHammerTimer > 0) {
+    stopDefense(ai);
+    if (abs > 90) moveToward(ai, opp, 0.75);
+    else if (abs < 55) moveAway(ai, opp, 0.45);
     return;
   }
 
@@ -4234,6 +4246,7 @@ if (hpW > 0) {
         p.transparentPoundActiveTimer = 0;
         p.transparentPoundHitIds = {};
         p.grayHammerTimer = 0;
+        p.grayHammerRotation = 0;
         p.grayHammerHitIds = {};
         p.pinkParrying = false;
         p.pinkParryTimer = 0;
@@ -4325,6 +4338,7 @@ if (hpW > 0) {
         p.transparentPoundActiveTimer = 0;
         p.transparentPoundHitIds = {};
         p.grayHammerTimer = 0;
+        p.grayHammerRotation = 0;
         p.grayHammerHitIds = {};
         p.pinkParrying = false;
         p.pinkParryTimer = 0;
@@ -4450,7 +4464,7 @@ if (hpW > 0) {
         p.attackHeight = "";
         p.dashTimer = 0;
       } else {
-        p.blocking = !p.blockDisabled && getHeld("block");
+        p.blocking = p.grayHammerTimer <= 0 && !p.blockDisabled && getHeld("block");
 
         if (p.blocking) {
           p.vx = 0;
@@ -4479,6 +4493,19 @@ if (hpW > 0) {
             p.vy = p.jumpPower;
             p.grounded = false;
           }
+        }
+
+        if (p.grayHammerTimer > 0) {
+          p.blocking = false;
+          p.attacking = false;
+          p.attackTimer = 0;
+          p.attackType = "";
+          p.attackHeight = "";
+          clearHeld("punch");
+          clearHeld("kick");
+          clearHeld("special1");
+          clearHeld("special2");
+          return;
         }
 
         if (getHeld("punch") && !p.attacking) {
@@ -4882,10 +4909,17 @@ if (hpW > 0) {
 
       if (p.grayHammerTimer > 0) {
         p.grayHammerTimer--;
-        p.vx *= 0.6;
         p.blocking = false;
-        p.ducking = false;
-        const hammerRadius = 92;
+        p.attacking = false;
+        p.attackTimer = 0;
+        p.attackType = "";
+        p.attackHeight = "";
+        const rotationIndex = Math.min(3, Math.floor((120 - p.grayHammerTimer) / 30));
+        if (p.grayHammerRotation !== rotationIndex) {
+          p.grayHammerRotation = rotationIndex;
+          p.grayHammerHitIds = {};
+        }
+        const hammerRadius = 112;
         fighters
           .filter((target) => target.alive && target.team !== p.team && !p.grayHammerHitIds?.[target.id])
           .forEach((target) => {
@@ -4895,13 +4929,14 @@ if (hpW > 0) {
               p.grayHammerHitIds = p.grayHammerHitIds || {};
               p.grayHammerHitIds[target.id] = true;
               applyDamage(p, target, "grayhammer", {
-                attackHeight: "overhead",
+                attackHeight: "mid",
                 knockbackDir: dx < 0 ? -1 : 1,
               });
             }
           });
         if (p.grayHammerTimer <= 0) {
           p.grayHammerTimer = 0;
+          p.grayHammerRotation = 0;
           p.grayHammerHitIds = {};
         }
       }
@@ -5527,30 +5562,23 @@ if (p.aiBlockHoldTimer > 0) {
       }
 
       if (p.grayHammerTimer > 0) {
-        const progress = (120 - p.grayHammerTimer) / 120;
-        const angle = progress * Math.PI * 6;
         const cx = p.x + p.width / 2;
         const cy = drawY + drawHeight / 2;
-        const length = 82;
-        const headX = cx + Math.cos(angle) * length;
-        const headY = cy + Math.sin(angle) * length;
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(angle);
-        ctx.fillStyle = "#9ca3af";
-        ctx.fillRect(0, -4, length, 8);
-        ctx.fillStyle = "#4b5563";
-        ctx.fillRect(length - 5, -15, 20, 30);
-        ctx.restore();
-        ctx.strokeStyle = "rgba(248,250,252,0.8)";
+        const pulse = 108 + Math.sin(Date.now() / 70) * 4;
+        ctx.fillStyle = "rgba(107,114,128,0.18)";
+        ctx.beginPath();
+        ctx.arc(cx, cy, pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(248,250,252,0.82)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(cx, cy, pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(75,85,99,0.45)";
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(cx, cy, length, 0, Math.PI * 2);
+        ctx.arc(cx, cy, pulse - 16, 0, Math.PI * 2);
         ctx.stroke();
-        ctx.fillStyle = "rgba(255,255,255,0.2)";
-        ctx.beginPath();
-        ctx.arc(headX, headY, 6, 0, Math.PI * 2);
-        ctx.fill();
       }
 
       if (p.pinkParrying) {
