@@ -1917,7 +1917,6 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         pinkParrying: false,
         pinkParryTimer: 0,
         pinkParryDucking: false,
-        pinkPlusHealedIds: {},
         brownPhasing: false,
         brownStunned: false,
         brownStunTimer: 0,
@@ -2830,7 +2829,6 @@ const beginPinkPlus = (fighter) => {
   const cy = fighter.y + fighter.height / 2;
   const speed = 8.5;
   const diagonalSpeed = speed / Math.sqrt(2);
-  const pinkPlusId = `pinkplus-${Date.now()}-${Math.random()}`;
   [
     { vx: speed, vy: 0, attackHeight: "high" },
     { vx: diagonalSpeed, vy: -diagonalSpeed, attackHeight: "low" },
@@ -2849,7 +2847,6 @@ const beginPinkPlus = (fighter) => {
       owner: fighter,
       team: fighter.team,
       type: "pinkplus",
-      pinkPlusId,
       attackHeight: shot.attackHeight,
       color: "#ec4899",
       radius: 9,
@@ -4251,7 +4248,6 @@ if (hpW > 0) {
         p.pinkParrying = false;
         p.pinkParryTimer = 0;
         p.pinkParryDucking = false;
-        p.pinkPlusHealedIds = {};
         p.brownPhasing = false;
         p.brownStunned = false;
         p.brownStunTimer = 0;
@@ -4343,7 +4339,6 @@ if (hpW > 0) {
         p.pinkParrying = false;
         p.pinkParryTimer = 0;
         p.pinkParryDucking = false;
-        p.pinkPlusHealedIds = {};
         p.brownPhasing = false;
         p.brownStunned = false;
         p.brownStunTimer = 0;
@@ -6046,21 +6041,12 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   target.hitstunTimer = 0;
                 }
               } else if (proj.type === "pinkplus") {
-                const blocked = canBlockAttack(proj.owner, target, "pinkplus", proj.attackHeight);
-                const damageDone = applyDamage(proj.owner, target, "pinkplus", {
+                applyDamage(proj.owner, target, "pinkplus", {
                   attackHeight: proj.attackHeight,
                   isProjectile: true,
                   knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
                   ignoreRainbowInvulnerable: !!proj.reflected,
                 });
-                if (!blocked && damageDone > 0 && proj.owner?.alive) {
-                  const pinkPlusId = proj.pinkPlusId || "pinkplus";
-                  proj.owner.pinkPlusHealedIds = proj.owner.pinkPlusHealedIds || {};
-                  if (!proj.owner.pinkPlusHealedIds[pinkPlusId]) {
-                    proj.owner.pinkPlusHealedIds[pinkPlusId] = true;
-                    proj.owner.health = Math.min(proj.owner.maxHealth || 100, proj.owner.health + 5);
-                  }
-                }
               } else if (proj.type === "poisonorb") {
                 const blocked = canBlockAttack(proj.owner, target, "poisonorb", proj.attackHeight);
                 const damageDone = applyDamage(proj.owner, target, "poisonorb", {
