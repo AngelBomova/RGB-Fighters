@@ -1306,6 +1306,7 @@ const toggleFullscreen = async () => {
         specialDisabled: p.specialDisabled,
         specialDisabledTimer: p.specialDisabledTimer,
         slowedTimer: p.slowedTimer,
+        poisonSlowTimer: p.poisonSlowTimer,
         poisoned: p.poisoned,
         poisonTicksLeft: p.poisonTicksLeft,
         poisonTickTimer: p.poisonTickTimer,
@@ -1876,6 +1877,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         specialDisabled: false,
         specialDisabledTimer: 0,
         slowedTimer: 0,
+        poisonSlowTimer: 0,
         poisoned: false,
         poisonTicksLeft: 0,
         poisonTickTimer: 0,
@@ -2078,6 +2080,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           p.specialDisabled = false;
           p.specialDisabledTimer = 0;
           p.slowedTimer = 0;
+          p.poisonSlowTimer = 0;
 
           p.blockDisabled = false;
           p.blockDisabledTimer = 0;
@@ -2297,6 +2300,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
       let slowFrames = 0;
       let applyPoisonTicks = 0;
       let applyJumpDisable = 0;
+      let applyPoisonSlowFrames = 0;
 
       switch (attackType) {
         case "punch":
@@ -2429,8 +2433,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         case "poisonorb":
           damage = 5;
           knockback = 3;
-          slowFrames = 480;
-          applyJumpDisable = 900;
+          applyPoisonSlowFrames = 480;
           applyPoisonTicks = 10;
           break;
         case "blackball":
@@ -2545,6 +2548,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         slowFrames = 0;
         applyPoisonTicks = 0;
         applyJumpDisable = 0;
+        applyPoisonSlowFrames = 0;
       }
 
       if (blocked) {
@@ -2557,6 +2561,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         slowFrames = 0;
         applyPoisonTicks = 0;
         applyJumpDisable = 0;
+        applyPoisonSlowFrames = 0;
         playSfx("block");
       } else if (damage > 0) {
         playSfx("hit");
@@ -2583,6 +2588,9 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         }
         if (slowFrames > 0) {
           defender.slowedTimer = slowFrames;
+        }
+        if (applyPoisonSlowFrames > 0) {
+          defender.poisonSlowTimer = applyPoisonSlowFrames;
         }
         if (applyPoisonTicks > 0) {
           defender.poisoned = true;
@@ -4204,6 +4212,7 @@ if (hpW > 0) {
         p.specialDisabled = false;
         p.specialDisabledTimer = 0;
         p.slowedTimer = 0;
+        p.poisonSlowTimer = 0;
 
         p.blockDisabled = false;
         p.blockDisabledTimer = 0;
@@ -4295,6 +4304,7 @@ if (hpW > 0) {
         p.specialDisabled = false;
         p.specialDisabledTimer = 0;
         p.slowedTimer = 0;
+        p.poisonSlowTimer = 0;
 
         p.blockDisabled = false;
         p.blockDisabledTimer = 0;
@@ -4898,6 +4908,12 @@ if (hpW > 0) {
         p.slowedTimer--;
         p.speed *= 0.75;
         p.jumpPower *= 0.75;
+      }
+
+      if (p.poisonSlowTimer > 0) {
+        p.poisonSlowTimer--;
+        p.speed *= 0.75;
+        p.jumpPower /= 1.5;
       }
 
       if (p.damageAmpTimer > 0) p.damageAmpTimer--;
