@@ -2357,13 +2357,13 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           hitstunFrames = 8;
           break;
         case "monochromeball":
-          damage = 10;
+          damage = 3;
           knockback = 10;
           launchUp = true;
           hitstunFrames = 18;
           break;
         case "monochromewave":
-          damage = 10;
+          damage = 12;
           knockback = 3;
           hitstunFrames = 10;
           freezeFrames = 180;
@@ -2390,7 +2390,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           hitstunFrames = 18;
           break;
         case "transparentpound":
-          damage = 3;
+          damage = 6;
           knockback = 0;
           hitstunFrames = 8;
           freezeFrames = 180;
