@@ -1138,7 +1138,7 @@ const toggleFullscreen = async () => {
         humans: [{ slot: "p1", team: 1, color: p1Color }],
         ai: [{ slot: "ai1", team: 2, color: oppColor, dummy: false }],
         difficulty: isLast ? "hard" : difficulty || diffByStep,
-        stage: randStage(),
+        stage: stage || "default",
         ladderIndex: idx,
       };
     }
@@ -1622,7 +1622,7 @@ const toggleFullscreen = async () => {
 
   const proceedAfterDifficulty = () => {
     if (mode === "ladder") {
-      setStage("random");
+      setStage(randStage());
       setMenuStep("playing");
       resetAll();
     } else {
@@ -1943,6 +1943,13 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         aiPressureTimer: 0,
         aiPressureHits: 0,
         aiBlockHoldTimer: 0,
+        aiObservedTargetId: null,
+        aiObservedTargetX: null,
+        aiObservedTargetY: null,
+        aiTargetStillTimer: 0,
+        aiLevelPathTimer: 0,
+        aiDropDir: 0,
+        aiDropCommitTimer: 0,
       };
     };
 
@@ -2254,7 +2261,8 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
     const checkPlatformCollision = (p) => {
       if (p.vy < 0) return;
       for (const plat of platforms) {
-        if (p.x + p.width > plat.x && p.x < plat.x + plat.width && p.y + p.height >= plat.y && p.y + p.height <= plat.y + 20) {
+        const feetCenterX = p.x + p.width / 2;
+        if (feetCenterX >= plat.x && feetCenterX <= plat.x + plat.width && p.y + p.height >= plat.y && p.y + p.height <= plat.y + 20) {
           p.y = plat.y - p.height;
           p.vy = 0;
           p.grounded = true;
@@ -2798,7 +2806,7 @@ const beginMonochromeMissile = (fighter) => {
   playSfx("fireball");
   setManagedTimeout(() => {
     fighter.canProjectile = true;
-  }, 5000);
+  }, 1000);
   return true;
 };
 
@@ -3204,7 +3212,7 @@ const beginProjectile = (ai) => {
       color: "#f8fafc",
         radius: 8,
       });
-      cooldown = 900;
+      cooldown = 1000;
       playSfx("white_low");
     } else {
       projectiles.current.push({
@@ -3298,7 +3306,7 @@ const beginWhiteDrop = (ai, target) => {
   ai.canSpecial2 = false;
   setManagedTimeout(() => {
     ai.canSpecial2 = true;
-  }, 4500);
+  }, 3000);
 
   return true;
 };
@@ -3464,8 +3472,9 @@ const moveToward = (ai, target, speedMult = 1) => {
     ai.vx = 0;
     return;
   }
+  const cappedSpeedMult = Math.max(0, Math.min(1, speedMult));
   const dx = faceTarget(ai, target);
-  ai.vx = dx > 0 ? ai.speed * speedMult : -ai.speed * speedMult;
+  ai.vx = dx > 0 ? ai.speed * cappedSpeedMult : -ai.speed * cappedSpeedMult;
 };
 
 const moveAway = (ai, target, speedMult = 1) => {
@@ -3473,8 +3482,9 @@ const moveAway = (ai, target, speedMult = 1) => {
     ai.vx = 0;
     return;
   }
+  const cappedSpeedMult = Math.max(0, Math.min(1, speedMult));
   const dx = faceTarget(ai, target);
-  ai.vx = dx > 0 ? -ai.speed * speedMult : ai.speed * speedMult;
+  ai.vx = dx > 0 ? -ai.speed * cappedSpeedMult : ai.speed * cappedSpeedMult;
 };
 
 const chooseCloseAttack = (ai, opp) => {
@@ -3544,9 +3554,241 @@ const tryJumpToPlatform = (ai, opp) => {
 
   ai.vy = ai.jumpPower;
   ai.grounded = false;
-  ai.vx = targetX > centerX(ai) ? ai.speed * 1.15 : -ai.speed * 1.15;
+  ai.vx = targetX > centerX(ai) ? ai.speed : -ai.speed;
 
   return true;
+};
+
+const tryClimbTowardOpponent = (ai, opp) => {
+  if (ai.ducking || !ai.grounded || ai.jumpDisabled) return false;
+
+  const aiFeet = ai.y + ai.height;
+  const aiCenter = centerX(ai);
+  const reachablePlatforms = platforms
+    .filter((plat) => {
+      if (plat.width >= WORLD_W - 4) return false;
+      const platformAbove = plat.y < aiFeet - 25;
+      const reachableHeight = aiFeet - plat.y <= 170;
+      return platformAbove && reachableHeight;
+    })
+    .sort((a, b) => {
+      const aHorizontal = aiCenter < a.x ? a.x - aiCenter : aiCenter > a.x + a.width ? aiCenter - (a.x + a.width) : 0;
+      const bHorizontal = aiCenter < b.x ? b.x - aiCenter : aiCenter > b.x + b.width ? aiCenter - (b.x + b.width) : 0;
+      return aHorizontal - bHorizontal || b.y - a.y;
+    });
+
+  const targetPlatform = reachablePlatforms[0];
+  if (!targetPlatform) return false;
+
+  const targetX = Math.max(targetPlatform.x + 24, Math.min(targetPlatform.x + targetPlatform.width - 24, centerX(opp)));
+  const insideJumpWindow = aiCenter >= targetPlatform.x - 65 && aiCenter <= targetPlatform.x + targetPlatform.width + 65;
+
+  ai.facing = targetX >= aiCenter ? 1 : -1;
+  ai.vx = ai.facing * ai.speed;
+  ai.blocking = false;
+  ai.ducking = false;
+  ai.attacking = false;
+
+  if (insideJumpWindow) {
+    ai.vy = ai.jumpPower;
+    ai.grounded = false;
+  }
+
+  return true;
+};
+
+const tryDropToOpponent = (ai, opp) => {
+  if (!ai.grounded || ai.ducking) return false;
+  if (centerY(opp) <= centerY(ai) + 70) return false;
+  const platform = getPlatformFighterIsOn(ai);
+  if (!platform || platform.width >= WORLD_W - 4) return false;
+
+  const aiCenter = centerX(ai);
+  const oppCenter = centerX(opp);
+  const aiToLeftEdge = Math.abs(aiCenter - platform.x);
+  const aiToRightEdge = Math.abs(aiCenter - (platform.x + platform.width));
+  const oppOutsideLeft = oppCenter < platform.x;
+  const oppOutsideRight = oppCenter > platform.x + platform.width;
+  const direction = oppOutsideLeft ? -1 : oppOutsideRight ? 1 : aiToLeftEdge < aiToRightEdge ? -1 : 1;
+
+  ai.facing = direction;
+  ai.vx = direction * ai.speed;
+  ai.blocking = false;
+  ai.ducking = false;
+  ai.attacking = false;
+  ai.aiDropDir = direction;
+  ai.aiDropCommitTimer = 45;
+  return true;
+};
+
+const chaseOpponentLevel = (ai, opp) => {
+  const verticalGap = centerY(opp) - centerY(ai);
+  if (Math.abs(verticalGap) < 55 && ai.aiDropCommitTimer <= 0) {
+    ai.aiLevelPathTimer = 0;
+    ai.aiDropCommitTimer = 0;
+    ai.aiDropDir = 0;
+    return false;
+  }
+
+  if (ai.aiDropCommitTimer > 0 && ai.grounded) {
+    ai.aiDropCommitTimer--;
+    const direction = ai.aiDropDir || (centerX(opp) > centerX(ai) ? 1 : -1);
+
+    ai.facing = direction;
+    ai.vx = direction * ai.speed;
+    ai.blocking = false;
+    ai.ducking = false;
+    ai.attacking = false;
+
+    return true;
+  }
+
+  if (!ai.grounded && ai.aiDropDir) {
+    ai.facing = ai.aiDropDir;
+    ai.vx = ai.aiDropDir * ai.speed;
+    ai.blocking = false;
+    ai.ducking = false;
+    ai.attacking = false;
+    return true;
+  }
+
+  if (verticalGap > 55 && tryDropToOpponent(ai, opp)) {
+    ai.aiLevelPathTimer = 24;
+    return true;
+  }
+
+  if (verticalGap < -55) {
+    if (tryJumpToPlatform(ai, opp)) {
+      ai.aiLevelPathTimer = 18;
+      return true;
+    }
+
+    if (tryClimbTowardOpponent(ai, opp)) {
+      ai.aiLevelPathTimer = 18;
+      return true;
+    }
+
+    if (ai.grounded && !ai.ducking) {
+      moveToward(ai, opp, 1);
+      ai.aiLevelPathTimer = 18;
+      return true;
+    }
+  }
+
+  if (ai.aiLevelPathTimer > 0) {
+    ai.aiLevelPathTimer--;
+    if (Math.abs(verticalGap) > 55) {
+      const direction = ai.aiDropDir || (centerX(opp) > centerX(ai) ? 1 : -1);
+      ai.facing = direction;
+      ai.vx = direction * ai.speed;
+    }
+    return true;
+  }
+
+  return false;
+};
+
+const updateAiTargetRead = (ai, opp) => {
+  if (ai.aiObservedTargetId !== opp.id) {
+    ai.aiObservedTargetId = opp.id;
+    ai.aiObservedTargetX = opp.x;
+    ai.aiObservedTargetY = opp.y;
+    ai.aiTargetStillTimer = 0;
+    return;
+  }
+
+  const moved =
+    Math.abs((ai.aiObservedTargetX ?? opp.x) - opp.x) +
+    Math.abs((ai.aiObservedTargetY ?? opp.y) - opp.y);
+
+  ai.aiTargetStillTimer = moved < 1.2 ? (ai.aiTargetStillTimer || 0) + 1 : 0;
+  ai.aiObservedTargetX = opp.x;
+  ai.aiObservedTargetY = opp.y;
+};
+
+const getAiTactic = (ai, opp, targetStill) => {
+  const settings = getAiSettings(ai);
+  const tactic = {
+    spacing: settings.spacing,
+    meleeRange: settings.meleeRange,
+    aggression: settings.aggression,
+    specialChance: settings.specialChance,
+    projectileRange: settings.projectileRange,
+  };
+
+  if (targetStill) {
+    tactic.spacing = Math.max(56, tactic.spacing - 34);
+    tactic.aggression = Math.min(1.35, tactic.aggression + 0.32);
+    tactic.specialChance = Math.min(0.98, tactic.specialChance + 0.22);
+  }
+
+  switch (ai.type) {
+    case "fire":
+      tactic.spacing = 70;
+      tactic.aggression += 0.22;
+      break;
+    case "ice":
+      tactic.spacing = 150;
+      tactic.projectileRange = 115;
+      break;
+    case "poison":
+      tactic.spacing = ai.health < 65 ? 240 : 165;
+      tactic.projectileRange = 95;
+      break;
+    case "void":
+      tactic.spacing = ai.charging ? 280 : 185;
+      tactic.projectileRange = 125;
+      break;
+    case "light":
+      tactic.spacing = 145;
+      tactic.projectileRange = 90;
+      break;
+    case "psychic":
+      tactic.spacing = opp.damageAmpTimer > 0 || ai.speedBoostTimer > 0 ? 66 : 175;
+      tactic.aggression += opp.damageAmpTimer > 0 ? 0.42 : 0.08;
+      break;
+    case "electric":
+      tactic.spacing = 185;
+      tactic.projectileRange = 120;
+      break;
+    case "explosion":
+      tactic.spacing = ai.cooldownBoostTimer > 0 ? 125 : 190;
+      tactic.specialChance += ai.cooldownBoostTimer > 0 ? 0.18 : 0;
+      break;
+    case "rainbow":
+      tactic.spacing = 205;
+      tactic.projectileRange = 100;
+      tactic.specialChance += 0.12;
+      break;
+    case "monochrome":
+      tactic.spacing = 135;
+      tactic.projectileRange = 80;
+      tactic.specialChance += 0.18;
+      break;
+    case "transparent":
+      tactic.spacing = 105;
+      tactic.aggression += 0.18;
+      break;
+    case "gray":
+      tactic.spacing = 82;
+      tactic.meleeRange += 12;
+      break;
+    case "brown":
+      tactic.spacing = ai.brownInvulnTimer > 0 ? 68 : 115;
+      tactic.aggression += ai.brownInvulnTimer > 0 ? 0.3 : 0.05;
+      break;
+    case "pink":
+      tactic.spacing = 230;
+      tactic.projectileRange = 65;
+      tactic.specialChance += 0.2;
+      break;
+    default:
+      break;
+  }
+
+  tactic.aggression = Math.max(0.25, Math.min(1.45, tactic.aggression));
+  tactic.specialChance = Math.max(0.05, Math.min(0.98, tactic.specialChance));
+  return tactic;
 };
 
 const updateAI = (ai) => {
@@ -3572,9 +3814,12 @@ const updateAI = (ai) => {
   const opp = getNearestEnemy(ai);
   if (!opp) return;
 
-  const dx = faceTarget(ai, opp);
+  const dx = centerX(opp) - centerX(ai);
   const abs = Math.abs(dx);
-  const sameLane = sameVerticalLane(ai, opp);
+  const sameLane = sameVerticalLane(ai, opp, 42);
+  updateAiTargetRead(ai, opp);
+  const targetStill = (ai.aiTargetStillTimer || 0) > 120;
+  const tactic = getAiTactic(ai, opp, targetStill);
 
   const targetVulnerable =
     opp.frozen ||
@@ -3683,17 +3928,6 @@ const updateAI = (ai) => {
     if (beginYellowReflect(ai)) return;
   }
 
-  if (ai.aiBlockHoldTimer > 0 && !ai.blockDisabled) {
-  const pressureAttackHeight =
-    incoming?.attackHeight ||
-    opp.attackHeight ||
-    (opp.ducking ? "low" : "mid");
-
-  if (incoming || abs < 145 || opp.attacking) {
-    smartBlock(ai, pressureAttackHeight === "low" ? "low" : "mid");
-    return;
-  }
-}
   if (incoming && rand() < getAiSettings(ai).projectileBlockChance) {
     if (incoming.type === "poisonorb") {
       if (!ai.ducking && ai.grounded && !ai.jumpDisabled && rand() < getAiSettings(ai).jumpChance) {
@@ -3708,20 +3942,41 @@ const updateAI = (ai) => {
     return;
   }
 
-  if (opp.attacking && abs < 135 && rand() < getAiSettings(ai).blockChance) {
+  if (chaseOpponentLevel(ai, opp)) return;
+
+  faceTarget(ai, opp);
+
+  if (ai.type === "pink" && ai.canSpecial2 && !ai.specialDisabled && sameLane && opp.attacking && abs < 150 && rand() < getAiSettings(ai).blockChance + 0.18) {
+    ai.ducking = ["low", "mid", "unblockable"].includes(opp.attackHeight || "mid");
+    if (beginPinkParry(ai)) return;
+  }
+
+  if (ai.aiBlockHoldTimer > 0 && !ai.blockDisabled) {
+  const pressureAttackHeight =
+    incoming?.attackHeight ||
+    opp.attackHeight ||
+    (opp.ducking ? "low" : "mid");
+
+  if (incoming || (sameLane && (abs < 145 || opp.attacking))) {
+    smartBlock(ai, pressureAttackHeight === "low" ? "low" : "mid");
+    return;
+  }
+}
+
+  if (sameLane && opp.attacking && abs < 135 && rand() < getAiSettings(ai).blockChance) {
   const h = opp.attackHeight || "mid";
   smartBlock(ai, h === "low" ? "low" : "mid");
   return;
 }
 
-if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
+if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
   smartBlock(ai, "low");
   return;
 }
 
   ai.aiTimer++;
   if (ai.aiTimer < getAiSettings(ai).reactionTime) {
-    if (abs > getAiSettings(ai).spacing + 40) moveToward(ai, opp, 0.75);
+    if (abs > tactic.spacing + 40) moveToward(ai, opp, 0.75);
     else if (abs < 55) moveAway(ai, opp, 0.65);
     else ai.vx *= 0.75;
 
@@ -3730,7 +3985,11 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
   ai.aiTimer = 0;
 
   if (rand() < getAiSettings(ai).mistakeChance) {
-    if (abs > getAiSettings(ai).spacing) moveToward(ai, opp, 0.7);
+    if (targetStill) {
+      moveToward(ai, opp, 1.1);
+      return;
+    }
+    if (abs > tactic.spacing) moveToward(ai, opp, 0.7);
     else if (abs < 70) moveAway(ai, opp, 0.55);
     else ai.vx = 0;
     return;
@@ -3747,18 +4006,10 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
   }
 
   if (
-  centerY(opp) < centerY(ai) - 65 &&
-  abs < 280 &&
-  rand() < getAiSettings(ai).jumpChance + 0.3
-) {
-  if (tryJumpToPlatform(ai, opp)) return;
-}
-
-  if (
     ai.type === "rainbow" &&
     ai.canProjectile &&
     !ai.specialDisabled &&
-    rand() < getAiSettings(ai).specialChance
+    rand() < tactic.specialChance
   ) {
     if (beginRainbowTurret(ai)) return;
   }
@@ -3768,7 +4019,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     ai.canSpecial2 &&
     !ai.specialDisabled &&
     !getActiveRainbowSummon(ai) &&
-    rand() < getAiSettings(ai).specialChance
+    rand() < tactic.specialChance
   ) {
     if (beginRainbowSummon(ai)) return;
   }
@@ -3778,7 +4029,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     ai.canSpecial2 &&
     !ai.specialDisabled &&
     abs < 640 &&
-    rand() < getAiSettings(ai).specialChance
+    rand() < tactic.specialChance
   ) {
     if (beginMonochromeWave(ai)) return;
   }
@@ -3788,7 +4039,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     ai.canSpecial2 &&
     !ai.specialDisabled &&
     abs < 520 &&
-    rand() < getAiSettings(ai).specialChance
+    rand() < tactic.specialChance
   ) {
     if (beginTransparentPound(ai)) return;
   }
@@ -3797,8 +4048,9 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     ai.type === "gray" &&
     ai.canSpecial2 &&
     !ai.specialDisabled &&
+    sameLane &&
     abs < 120 &&
-    rand() < getAiSettings(ai).specialChance
+    rand() < tactic.specialChance
   ) {
     if (beginGrayHammer(ai)) return;
   }
@@ -3807,7 +4059,8 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     ai.type === "pink" &&
     ai.canSpecial2 &&
     !ai.specialDisabled &&
-    abs < getAiSettings(ai).meleeRange + 12 &&
+    sameLane &&
+    abs < tactic.meleeRange + 12 &&
     rand() < getAiSettings(ai).blockChance
   ) {
     if (beginPinkParry(ai)) return;
@@ -3819,7 +4072,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     !ai.specialDisabled &&
     ai.brownInvulnTimer <= 0 &&
     abs < 260 &&
-    rand() < getAiSettings(ai).specialChance
+    rand() < tactic.specialChance
   ) {
     if (beginBrownArmorCharge(ai)) return;
   }
@@ -3831,7 +4084,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     ai.speedBoostTimer <= 0 &&
     abs > 160 &&
     !incoming &&
-    rand() < getAiSettings(ai).specialChance
+    rand() < tactic.specialChance
   ) {
     if (beginPurplePowerUp(ai)) return;
   }
@@ -3843,7 +4096,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     sameLane &&
     abs > 120 &&
     abs < 440 &&
-    rand() < getAiSettings(ai).specialChance &&
+    rand() < tactic.specialChance &&
     (targetVulnerable || opp.damageAmpTimer <= 0 || abs > 220)
   ) {
     if (beginProjectile(ai)) return;
@@ -3856,7 +4109,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     sameLane &&
     abs > 140 &&
     abs < 520 &&
-    rand() < getAiSettings(ai).specialChance &&
+    rand() < tactic.specialChance &&
     (targetVulnerable || !opp.grounded || abs > 230)
   ) {
     if (beginProjectile(ai)) return;
@@ -3869,7 +4122,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     sameLane &&
     abs > 100 &&
     abs < 430 &&
-    rand() < getAiSettings(ai).specialChance &&
+    rand() < tactic.specialChance &&
     (targetVulnerable || ai.cooldownBoostTimer <= 0 || abs > 190)
   ) {
     if (beginOrangeCooldownBoost(ai)) return;
@@ -3882,7 +4135,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     sameLane &&
     abs > 115 &&
     abs < 430 &&
-    rand() < getAiSettings(ai).specialChance
+    rand() < tactic.specialChance
   ) {
     if (beginProjectile(ai)) return;
   }
@@ -3892,7 +4145,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     ai.canSpecial2 &&
     !ai.specialDisabled &&
     abs < 560 &&
-    rand() < getAiSettings(ai).specialChance &&
+    rand() < tactic.specialChance &&
     (targetVulnerable || opp.blocking || abs < 250 || !opp.grounded)
   ) {
     if (beginWhiteDrop(ai, opp)) return;
@@ -3905,7 +4158,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     sameLane &&
     abs > 90 &&
     abs < 430 &&
-    rand() < getAiSettings(ai).specialChance &&
+    rand() < tactic.specialChance &&
     (targetVulnerable || (opp.blocking && !opp.ducking) || abs > 190)
   ) {
     if (beginProjectile(ai)) return;
@@ -3916,7 +4169,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     ai.health <= getAiSettings(ai).healHealth &&
     abs > getAiSettings(ai).healSafeDistance &&
     !incoming &&
-    rand() < getAiSettings(ai).specialChance
+    rand() < tactic.specialChance
   ) {
     if (beginPoisonHeal(ai)) return;
   }
@@ -3928,7 +4181,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     sameLane &&
     abs > 145 &&
     abs < 520 &&
-    rand() < getAiSettings(ai).specialChance &&
+    rand() < tactic.specialChance &&
     (targetVulnerable || opp.blocking || abs > 260)
   ) {
     if (beginVoidCharge(ai)) return;
@@ -3941,7 +4194,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     sameLane &&
     abs > 100 &&
     abs < 430 &&
-    rand() < getAiSettings(ai).specialChance &&
+    rand() < tactic.specialChance &&
     (targetVulnerable || opp.blocking || abs > 190)
   ) {
     if (beginIceSlowOrb(ai)) return;
@@ -3951,9 +4204,10 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     ai.type === "fire" &&
     ai.canSpecial2 &&
     !ai.specialDisabled &&
+    sameLane &&
     abs > 95 &&
     abs < 310 &&
-    rand() < getAiSettings(ai).specialChance &&
+    rand() < tactic.specialChance &&
     (targetVulnerable || aiCornered || abs > 180)
   ) {
     if (beginRedDash(ai)) return;
@@ -3962,11 +4216,12 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
   if (
     (ai.type === "void" || ai.type === "ice") &&
     (opp.blockDisabled || opp.jumpDisabled) &&
+    sameLane &&
     abs > 70 &&
     abs < 290
   ) {
     moveToward(ai, opp, 1.25);
-    if (abs < getAiSettings(ai).meleeRange) chooseCloseAttack(ai, opp);
+    if (abs < tactic.meleeRange) chooseCloseAttack(ai, opp);
     return;
   }
 
@@ -3974,18 +4229,18 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     ai.canProjectile &&
     !ai.specialDisabled &&
     sameLane &&
-    abs > getAiSettings(ai).projectileRange &&
-    rand() < getAiSettings(ai).specialChance
+    abs > tactic.projectileRange &&
+    rand() < tactic.specialChance
   ) {
     if (beginProjectile(ai)) return;
   }
 
-  if (abs <= getAiSettings(ai).meleeRange) {
+  if (sameLane && abs <= tactic.meleeRange) {
     chooseCloseAttack(ai, opp);
     return;
   }
 
-  if (!opp.grounded && abs < 115) {
+  if (sameLane && !opp.grounded && abs < 115) {
     if (beginMelee(ai, "uppercut")) return;
   }
 
@@ -3993,6 +4248,7 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     ai.grounded &&
     !ai.ducking &&
     !ai.jumpDisabled &&
+    sameLane &&
     abs > 115 &&
     abs < 260 &&
     rand() < getAiSettings(ai).jumpChance
@@ -4003,8 +4259,8 @@ if (opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
     return;
   }
 
-  if (abs > getAiSettings(ai).spacing) {
-    moveToward(ai, opp, getAiSettings(ai).aggression);
+  if (abs > tactic.spacing) {
+    moveToward(ai, opp, tactic.aggression);
   } else if (abs < 58) {
     moveAway(ai, opp, 0.85);
   } else {
@@ -4703,7 +4959,7 @@ if (hpW > 0) {
                 projectiles.current.push({ x: dropX, y: -40, vx: 0, vy: 13, owner: p, team: p.team, type: "whitedrop", attackHeight: "overhead", color: "#f8fafc", radius: 12, knockbackDir });
                 playSfx("white_drop");
                 p.canSpecial2 = false;
-                setManagedTimeout(() => (p.canSpecial2 = true), 4500);
+                setManagedTimeout(() => (p.canSpecial2 = true), 3000);
                 clearHeld("special2");
               }
             } else if (p.type === "void") {
@@ -4913,7 +5169,6 @@ if (hpW > 0) {
       if (p.poisonSlowTimer > 0) {
         p.poisonSlowTimer--;
         p.speed *= 0.75;
-        p.jumpPower /= 1.5;
       }
 
       if (p.damageAmpTimer > 0) p.damageAmpTimer--;
@@ -7532,6 +7787,7 @@ useEffect(() => {
           return;
         }
         setLadderIndex(next);
+        setStage(randStage());
         setTeam1Rounds(0);
         setTeam2Rounds(0);
         setGameOver(false);
@@ -7542,8 +7798,16 @@ useEffect(() => {
         primeNewRound();
         setMenuStep("playing");
       } else {
-        setLadderLoss(true);
-        setMenuStep("ladder_result");
+        setLadderLoss(false);
+        setTeam1Rounds(0);
+        setTeam2Rounds(0);
+        setGameOver(false);
+        setRoundWinnerText(null);
+        setMatchWinnerText(null);
+        keysPressed.current = {};
+        projectiles.current = [];
+        primeNewRound();
+        setMenuStep("playing");
       }
     };
 
@@ -7598,7 +7862,7 @@ useEffect(() => {
 </div>
                 ) : mode === "ladder" ? (
                   <button onClick={onNextMatchLadder} className="bg-gray-900 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition">
-                    {matchWinnerText === "Team 1" ? "Next Ladder Match" : "Ladder Failed"}
+                    {matchWinnerText === "Team 1" ? "Next Ladder Match" : "Try Again"}
                   </button>
                 ) : (
                   <button onClick={() => startModeFlow(mode)} className="bg-gray-900 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition">
@@ -7648,8 +7912,15 @@ useEffect(() => {
                 <button
                   onClick={() => {
                     setLadderLoss(false);
-                    setLadderIndex(0);
-                    startModeFlow("ladder");
+                    setTeam1Rounds(0);
+                    setTeam2Rounds(0);
+                    setGameOver(false);
+                    setRoundWinnerText(null);
+                    setMatchWinnerText(null);
+                    keysPressed.current = {};
+                    projectiles.current = [];
+                    primeNewRound();
+                    setMenuStep("playing");
                   }}
                   className="bg-gray-900 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition"
                 >
