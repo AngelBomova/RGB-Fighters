@@ -185,8 +185,11 @@ async function initSqlite() {
         }
 
         if (s.includes('select') && s.includes('from friend_requests')) {
-          let rows = data.friend_requests.filter((fr) => {
-            const wantsPending = s.includes(`'pending'`) || s.includes(`"pending"`);
+          let rows = data.friend_requests;
+
+          const wantsPending = s.includes('status = ') && s.includes(`'pending'`);
+
+          rows = rows.filter((fr) => {
             const statusOk = !wantsPending || fr.status === 'pending';
 
             if (s.includes('where fr.to_user_id = $1') && params[0]) {
@@ -266,15 +269,20 @@ async function initSqlite() {
         }
 
         if (s.includes('select') && s.includes('from game_invites')) {
-          let rows = data.game_invites.filter((gi) => {
-            const wantsPending = s.includes(`'pending'`) || s.includes(`"pending"`);
-            const wantsAccepted = s.includes(`'accepted'`) || s.includes(`"accepted"`);
-            const statusOk = (!wantsPending && !wantsAccepted) || gi.status === 'pending' || gi.status === 'accepted';
+          const now = Date.now();
+          let rows = data.game_invites.filter((gi) => now - gi.created_at.getTime() < 60000);
 
-            let typeOk = true;
-            if (s.includes(`'private1v1'`)) typeOk = gi.invite_type === 'private1v1';
-            else if (s.includes(`'private2v2'`)) typeOk = gi.invite_type === 'private2v2';
-            else if (s.includes(`'online2v2'`)) typeOk = gi.invite_type === 'online2v2';
+          const wantsPending = s.includes('status') && s.includes(`'pending'`);
+          const wantsAccepted = s.includes('status') && s.includes(`'accepted'`);
+
+          let wantedType = null;
+          if (s.includes(`invite_type = 'private1v1'`)) wantedType = 'private1v1';
+          else if (s.includes(`invite_type = 'private2v2'`)) wantedType = 'private2v2';
+          else if (s.includes(`invite_type = 'online2v2'`)) wantedType = 'online2v2';
+
+          rows = rows.filter((gi) => {
+            const statusOk = !wantsPending || gi.status === 'pending';
+            const typeOk = !wantedType || gi.invite_type === wantedType;
 
             if (s.includes('where gi.to_user_id = $1') && params[0]) {
               return gi.to_user_id === params[0] && statusOk && typeOk;
