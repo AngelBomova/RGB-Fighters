@@ -7624,8 +7624,8 @@ useEffect(() => {
                 <div key={request.id} className="flex items-center justify-between gap-3 border-t border-gray-100 py-3">
                   <span>{request.username}</span>
                   <div className="flex gap-2">
-                    <button onClick={() => respondToFriendRequest(request.id, "accept")} className="rounded-xl bg-green-600 text-white px-3 py-2 text-sm">Accept</button>
-                    <button onClick={() => respondToFriendRequest(request.id, "decline")} className="rounded-xl bg-red-600 text-white px-3 py-2 text-sm">Decline</button>
+                    <button onClick={() => { playSfx("menu_select"); respondToFriendRequest(request.id, "accept"); }} className="rounded-xl bg-green-600 text-white px-3 py-2 text-sm">Accept</button>
+                    <button onClick={() => { playSfx("menu_back"); respondToFriendRequest(request.id, "decline"); }} className="rounded-xl bg-red-600 text-white px-3 py-2 text-sm">Decline</button>
                   </div>
                 </div>
               ))}
@@ -7648,10 +7648,10 @@ useEffect(() => {
                   <div className="font-medium">{friend.username}</div>
                   <div className="text-xs text-gray-500 mb-2">{friend.wins || 0}W - {friend.losses || 0}L</div>
                   <div className="flex flex-wrap gap-2">
-                    <button onClick={() => sendInviteToFriend(friend.id, friend.username, "private1v1")} className="rounded-xl bg-blue-600 text-white px-3 py-2 text-sm">Private 1v1</button>
-                    <button onClick={() => sendInviteToFriend(friend.id, friend.username, "private2v2")} className="rounded-xl bg-purple-600 text-white px-3 py-2 text-sm">Private 2v2</button>
-                    <button onClick={() => sendInviteToFriend(friend.id, friend.username, "online2v2")} className="rounded-xl bg-green-600 text-white px-3 py-2 text-sm">Invite 2v2 Online</button>
-                    <button onClick={() => unfriendUser(friend.id, friend.username)} className="rounded-xl bg-red-600 text-white px-3 py-2 text-sm">Unadd</button>
+                    <button onClick={() => { playSfx("menu_select"); sendInviteToFriend(friend.id, friend.username, "private1v1"); }} className="rounded-xl bg-blue-600 text-white px-3 py-2 text-sm">Private 1v1</button>
+                    <button onClick={() => { playSfx("menu_select"); sendInviteToFriend(friend.id, friend.username, "private2v2"); }} className="rounded-xl bg-purple-600 text-white px-3 py-2 text-sm">Private 2v2</button>
+                    <button onClick={() => { playSfx("menu_select"); sendInviteToFriend(friend.id, friend.username, "online2v2"); }} className="rounded-xl bg-green-600 text-white px-3 py-2 text-sm">Invite 2v2 Online</button>
+                    <button onClick={() => { playSfx("menu_back"); unfriendUser(friend.id, friend.username); }} className="rounded-xl bg-red-600 text-white px-3 py-2 text-sm">Unadd</button>
                   </div>
                 </div>
               ))}
@@ -7670,8 +7670,8 @@ useEffect(() => {
                   <div key={request.id} className="flex items-center justify-between gap-3 border-t border-gray-100 py-3">
                     <span>{request.username}</span>
                     <div className="flex gap-2">
-                      <button onClick={() => respondToGameInvite(request.id, "accept")} className="rounded-xl bg-green-600 text-white px-3 py-2 text-sm">Accept</button>
-                      <button onClick={() => respondToGameInvite(request.id, "decline")} className="rounded-xl bg-red-600 text-white px-3 py-2 text-sm">Decline</button>
+                      <button onClick={() => { playSfx("menu_select"); respondToGameInvite(request.id, "accept"); }} className="rounded-xl bg-green-600 text-white px-3 py-2 text-sm">Accept</button>
+                      <button onClick={() => { playSfx("menu_back"); respondToGameInvite(request.id, "decline"); }} className="rounded-xl bg-red-600 text-white px-3 py-2 text-sm">Decline</button>
                     </div>
                   </div>
                 ))}

@@ -89,9 +89,14 @@ async function initSqlite() {
       users: [],
       matches: [],
       achievements: [],
+      friend_requests: [],
+      friends: [],
+      game_invites: [],
       nextUserId: 1,
       nextMatchId: 1,
       nextAchievementId: 1,
+      nextFriendRequestId: 1,
+      nextGameInviteId: 1,
     };
 
     const toRow = (u) => ({ id: u.id, username: u.username, elo: u.elo, wins: u.wins, losses: u.losses, password_hash: u.password_hash });
@@ -99,9 +104,9 @@ async function initSqlite() {
     return {
       async query(sql, params = []) {
         const s = sql.toLowerCase();
-        if (s.includes('select') && s.includes('from users') && s.includes('where username')) {
+        if (s.includes('select') && s.includes('from users') && s.includes('where') && s.includes('username')) {
           const username = params[0];
-          const found = data.users.find((u) => u.username === username);
+          const found = data.users.find((u) => u.username.toLowerCase() === username.toLowerCase());
           const rows = found ? [toRow(found)] : [];
           if (s.includes(' wlr')) {
             return { rows: rows.map((u) => ({ ...u, wlr: (u.wins || 0) / Math.max(1, u.losses || 0) })) };
@@ -176,6 +181,144 @@ async function initSqlite() {
           if (!data.achievements.some((a) => a.user_id === userId && a.achievement_key === achievementKey)) {
             data.achievements.push({ id: data.nextAchievementId++, user_id: userId, achievement_key: achievementKey });
           }
+          return { rows: [] };
+        }
+
+        if (s.includes('select') && s.includes('from friend_requests')) {
+          let rows = data.friend_requests.filter((fr) => {
+            const wantsPending = s.includes(`'pending'`) || s.includes(`"pending"`);
+            const statusOk = !wantsPending || fr.status === 'pending';
+
+            if (s.includes('where fr.to_user_id = $1') && params[0]) {
+              return fr.to_user_id === params[0] && statusOk;
+            }
+            if (s.includes('where fr.from_user_id = $1') && params[0]) {
+              return fr.from_user_id === params[0] && statusOk;
+            }
+            return statusOk;
+          });
+
+          rows = rows.map((fr) => {
+            let otherUserId;
+            if (s.includes('where fr.to_user_id = $1')) otherUserId = fr.from_user_id;
+            else if (s.includes('where fr.from_user_id = $1')) otherUserId = fr.to_user_id;
+            else otherUserId = fr.from_user_id;
+
+            const otherUser = data.users.find((u) => u.id === otherUserId);
+            return {
+              id: fr.id,
+              from_user_id: fr.from_user_id,
+              to_user_id: fr.to_user_id,
+              username: otherUser?.username || 'Unknown',
+              status: fr.status,
+              created_at: fr.created_at
+            };
+          });
+          return { rows };
+        }
+
+        if (s.startsWith('insert') && s.includes('into friend_requests')) {
+          const fromUserId = params[0];
+          const toUserId = params[1];
+          const status = params[2];
+          data.friend_requests.push({ id: data.nextFriendRequestId++, from_user_id: fromUserId, to_user_id: toUserId, status, created_at: new Date() });
+          return { rows: [] };
+        }
+
+        if (s.startsWith('update friend_requests')) {
+          const id = params[1] || params[2];
+          const fr = data.friend_requests.find((r) => r.id === id);
+          if (fr && params[0]) fr.status = params[0];
+          return { rows: [] };
+        }
+
+        if (s.includes('select') && s.includes('from friends')) {
+          const rows = data.friends.filter((f) => {
+            if (params[0] && s.includes('where user_id')) return f.user_id === params[0];
+            return true;
+          }).map((f) => {
+            const friend = data.users.find((u) => u.id === f.friend_id);
+            return { id: f.friend_id, user_id: f.user_id, friend_id: f.friend_id, username: friend?.username, elo: friend?.elo, wins: friend?.wins, losses: friend?.losses };
+          });
+          return { rows };
+        }
+
+        if (s.startsWith('insert') && s.includes('into friends')) {
+          const userId = params[0];
+          const friendId = params[1];
+          if (!data.friends.some((f) => f.user_id === userId && f.friend_id === friendId)) {
+            data.friends.push({ user_id: userId, friend_id: friendId });
+          }
+          return { rows: [] };
+        }
+
+        if (s.startsWith('delete') && s.includes('from friends')) {
+          const userId = params[0];
+          const friendId = params[1];
+          data.friends = data.friends.filter((f) => !((f.user_id === userId && f.friend_id === friendId) || (f.user_id === friendId && f.friend_id === userId)));
+          return { rows: [] };
+        }
+
+        if (s.includes('select count') && s.includes('from friends')) {
+          const userId = params[0];
+          const count = data.friends.filter((f) => f.user_id === userId).length;
+          return { rows: [{ count }] };
+        }
+
+        if (s.includes('select') && s.includes('from game_invites')) {
+          let rows = data.game_invites.filter((gi) => {
+            const wantsPending = s.includes(`'pending'`) || s.includes(`"pending"`);
+            const wantsAccepted = s.includes(`'accepted'`) || s.includes(`"accepted"`);
+            const statusOk = (!wantsPending && !wantsAccepted) || gi.status === 'pending' || gi.status === 'accepted';
+
+            let typeOk = true;
+            if (s.includes(`'private1v1'`)) typeOk = gi.invite_type === 'private1v1';
+            else if (s.includes(`'private2v2'`)) typeOk = gi.invite_type === 'private2v2';
+            else if (s.includes(`'online2v2'`)) typeOk = gi.invite_type === 'online2v2';
+
+            if (s.includes('where gi.to_user_id = $1') && params[0]) {
+              return gi.to_user_id === params[0] && statusOk && typeOk;
+            }
+            if (s.includes('where gi.from_user_id = $1') && params[0]) {
+              return gi.from_user_id === params[0] && statusOk;
+            }
+            return statusOk && typeOk;
+          });
+
+          rows = rows.map((gi) => {
+            let otherUserId;
+            if (s.includes('where gi.to_user_id = $1')) otherUserId = gi.from_user_id;
+            else if (s.includes('where gi.from_user_id = $1')) otherUserId = gi.to_user_id;
+            else otherUserId = gi.from_user_id;
+
+            const otherUser = data.users.find((u) => u.id === otherUserId);
+            return {
+              id: gi.id,
+              from_user_id: gi.from_user_id,
+              to_user_id: gi.to_user_id,
+              username: otherUser?.username || 'Unknown',
+              invite_type: gi.invite_type,
+              status: gi.status,
+              created_at: gi.created_at
+            };
+          });
+          return { rows };
+        }
+
+        if (s.startsWith('insert') && s.includes('into game_invites')) {
+          const fromUserId = params[0];
+          const toUserId = params[1];
+          const inviteType = params[2];
+          const status = params[3];
+          data.game_invites.push({ id: data.nextGameInviteId++, from_user_id: fromUserId, to_user_id: toUserId, invite_type: inviteType, status, created_at: new Date() });
+          return { rows: [] };
+        }
+
+        if (s.startsWith('update game_invites')) {
+          const status = params[0];
+          const id = params[1];
+          const gi = data.game_invites.find((r) => r.id === id);
+          if (gi) gi.status = status;
           return { rows: [] };
         }
 
