@@ -45,6 +45,7 @@ function FighterGame() {
     private1v1Requests: [],
     private2v2Requests: [],
     online2v2Requests: [],
+    acceptedInvites: [],
   });
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [friendsMessage, setFriendsMessage] = useState("");
@@ -119,6 +120,8 @@ function FighterGame() {
   const [onlinePlayerNames, setOnlinePlayerNames] = useState({ p1: "", p2: "" });
   const onlineMatchRef = useRef(null); // { matchId, side }
   const onlineRemoteInputsRef = useRef({});
+  const pendingPrivateInviteRef = useRef(null);
+  const pendingTeamInviteRef = useRef(null);
 
   useEffect(() => {
     return () => {
@@ -486,7 +489,7 @@ const toggleFullscreen = async () => {
   useEffect(() => {
     pausedRef.current = settingsOpen && mode !== "online";
 
-    if (settingsOpen && mode !== "online") {
+    if (settingsOpen && mode !== "online" && mode !== "online2v2") {
       keysPressed.current = {};
     }
 
@@ -498,7 +501,7 @@ const toggleFullscreen = async () => {
 
   useEffect(() => {
     const handleBlur = () => {
-      if (mode === "online" && onlineMatchRef.current?.matchId) {
+      if ((mode === "online" || mode === "online2v2") && onlineMatchRef.current?.matchId) {
         keysPressed.current = {};
         sendOnlineInputs();
       }
@@ -586,6 +589,7 @@ const toggleFullscreen = async () => {
         private1v1Requests: Array.isArray(data?.private1v1Requests) ? data.private1v1Requests : [],
         private2v2Requests: Array.isArray(data?.private2v2Requests) ? data.private2v2Requests : [],
         online2v2Requests: Array.isArray(data?.online2v2Requests) ? data.online2v2Requests : [],
+        acceptedInvites: Array.isArray(data?.acceptedInvites) ? data.acceptedInvites : [],
       });
       setFriendsMessage("");
     }).catch((err) => {
@@ -604,6 +608,78 @@ const toggleFullscreen = async () => {
       setFriendsMessage(err?.error || "Could not update friend request.");
     });
   };
+
+  const unfriendUser = (friendId, username) => {
+    playSfx("menu_back");
+    const authToken = getAuthToken();
+    if (!authToken) return;
+    api.unfriend(authToken, friendId).then(() => {
+      setFriendsMessage(`Removed ${username} from your friends.`);
+      refreshFriends();
+    }).catch((err) => {
+      setFriendsMessage(err?.error || "Could not unadd friend.");
+    });
+  };
+
+  const sendInviteToFriend = (friendId, username, inviteType) => {
+    playSfx("menu_select");
+    const authToken = getAuthToken();
+    if (!authToken) return;
+    api.sendGameInvite(authToken, friendId, inviteType).then(() => {
+      const label = inviteType === "private1v1" ? "Private 1v1" : inviteType === "private2v2" ? "Private 2v2" : "2v2 Online";
+      setFriendsMessage(`${label} request sent to ${username}.`);
+      refreshFriends();
+    }).catch((err) => {
+      setFriendsMessage(err?.error || "Could not send invite.");
+    });
+  };
+
+  const respondToGameInvite = (inviteId, action) => {
+    playSfx(action === "accept" ? "menu_select" : "menu_back");
+    const authToken = getAuthToken();
+    if (!authToken) return;
+    api.respondGameInvite(authToken, inviteId, action).then((data) => {
+      const label = data?.inviteType === "private1v1" ? "Private 1v1" : data?.inviteType === "private2v2" ? "Private 2v2" : "2v2 Online";
+      if (action === "accept" && data?.inviteType === "private1v1") {
+        pendingPrivateInviteRef.current = { inviteId: data.inviteId, inviteType: data.inviteType };
+        setFriendsMessage(`${label} accepted. Open Online 1v1 and press Join Private Match.`);
+        setMode("online");
+        setMenuStep("comingsoon");
+      } else if (action === "accept" && (data?.inviteType === "private2v2" || data?.inviteType === "online2v2")) {
+        pendingTeamInviteRef.current = { inviteId: data.inviteId, inviteType: data.inviteType };
+        setFriendsMessage(`${label} accepted. Open 2v2 Online and press Join Team Queue.`);
+        setMode("online2v2");
+        setMenuStep("online2v2");
+      } else {
+        setFriendsMessage(action === "accept" ? `${label} accepted. Match setup is next.` : `${label} declined.`);
+      }
+      refreshFriends();
+    }).catch((err) => {
+      setFriendsMessage(err?.error || "Could not update invite.");
+    });
+  };
+
+  useEffect(() => {
+    if (mode !== "friends" || menuStep !== "friends") return;
+    refreshFriends();
+    const interval = window.setInterval(refreshFriends, 5000);
+    return () => window.clearInterval(interval);
+  }, [mode, menuStep, token]);
+
+  useEffect(() => {
+    const privateInvite = friendsData.acceptedInvites.find((invite) => invite.invite_type === "private1v1");
+    if (!privateInvite || pendingPrivateInviteRef.current?.inviteId === privateInvite.id) return;
+    pendingPrivateInviteRef.current = { inviteId: privateInvite.id, inviteType: privateInvite.invite_type };
+    setFriendsMessage(`Private 1v1 accepted by ${privateInvite.username}. Open Online 1v1 and press Join Private Match.`);
+  }, [friendsData.acceptedInvites]);
+
+  useEffect(() => {
+    const teamInvite = friendsData.acceptedInvites.find((invite) => invite.invite_type === "private2v2" || invite.invite_type === "online2v2");
+    if (!teamInvite || pendingTeamInviteRef.current?.inviteId === teamInvite.id) return;
+    pendingTeamInviteRef.current = { inviteId: teamInvite.id, inviteType: teamInvite.invite_type };
+    const label = teamInvite.invite_type === "private2v2" ? "Private 2v2" : "2v2 Online";
+    setFriendsMessage(`${label} accepted by ${teamInvite.username}. Open 2v2 Online and press Join Team Queue.`);
+  }, [friendsData.acceptedInvites]);
 
   const unlockAudio = () => {
     if (audioUnlockedRef.current) return;
@@ -895,7 +971,7 @@ const toggleFullscreen = async () => {
         }
       }
 
-      if (mode === "online" && menuStep === "playing" && onlineMatchRef.current?.matchId) {
+      if ((mode === "online" || mode === "online2v2") && menuStep === "playing" && onlineMatchRef.current?.matchId) {
         const actions = {};
         const binds = p1ControllerBindsRef.current || {};
         for (const action of Object.keys(ACTION_LABELS)) {
@@ -1106,6 +1182,23 @@ const toggleFullscreen = async () => {
       ladder: false,
     };
 
+    if (mode === "online2v2") {
+      const match = onlineMatchRef.current || {};
+      return {
+        ...base,
+        humans: [
+          { slot: "p1", team: 1, color: match.p1Char || p1Color || "red", username: match.p1Username || onlinePlayerNames.p1 || "P1" },
+          { slot: "p2", team: 1, color: match.p2Char || p2Color || "blue", username: match.p2Username || onlinePlayerNames.p2 || "P2" },
+        ],
+        ai: [
+          { slot: "ai1", team: 2, color: match.e1Char || opp1Color || "green", dummy: false, aiDifficulty: "medium", username: match.e1Username || "Bot E1" },
+          { slot: "ai2", team: 2, color: match.e2Char || opp2Color || "orange", dummy: false, aiDifficulty: "medium", username: match.e2Username || "Bot E2" },
+        ],
+        difficulty: "medium",
+        stage: stage || "default",
+      };
+    }
+
     // Online match: construct humans from online-selected colors so the playing canvas initializes
     if (mode === "online") {
       // if p1/p2 colors are set from char-select or match:start, use them; otherwise pick defaults
@@ -1253,7 +1346,7 @@ const toggleFullscreen = async () => {
   const sendOnlineStateSnapshot = () => {
     const matchId = onlineMatchRef.current?.matchId;
     const socket = socketRef.current;
-    const isHost = onlineMatchRef.current?.host === true || onlineMatchRef.current?.side === "left";
+    const isHost = onlineMatchRef.current?.host === true;
     if (!matchId || !socket || !isHost) return;
 
     onlineSyncSeqRef.current += 1;
@@ -1301,7 +1394,7 @@ const toggleFullscreen = async () => {
     }
 
     if (keepLobby) {
-      setMode("online");
+      setMode(mode === "online2v2" ? "online2v2" : "online");
       setMenuStep("idle");
     }
   };
@@ -1496,14 +1589,14 @@ const toggleFullscreen = async () => {
 
   useEffect(() => {
     const match = onlineMatchRef.current;
-    const isViewer = mode === "online" && menuStep === "playing" && match?.matchId && !match.host && match.side !== "left";
+    const isViewer = (mode === "online" || mode === "online2v2") && menuStep === "playing" && match?.matchId && !match.host;
     if (!isViewer) return;
 
     let cancelled = false;
 
     const pollOnlineState = async () => {
       const activeMatch = onlineMatchRef.current;
-      if (!activeMatch?.matchId || activeMatch.host || activeMatch.side === "left") return;
+      if (!activeMatch?.matchId || activeMatch.host) return;
 
       try {
         const res = await fetch(`${apiBaseUrl}/api/match/state/${encodeURIComponent(activeMatch.matchId)}`, { cache: "no-store" });
@@ -1522,11 +1615,13 @@ const toggleFullscreen = async () => {
     };
   }, [mode, menuStep, apiBaseUrl]);
 
-  const onlineLocalTeam = mode === "online" && onlineMatchRef.current?.matchId
+  const isAnyOnlineMode = (mode === "online" || mode === "online2v2") && onlineMatchRef.current?.matchId;
+  const onlineLocalTeam = isAnyOnlineMode
     ? onlineMatchRef.current.side === "left"
       ? 1
       : 2
     : null;
+  const onlineLocalSlot = isAnyOnlineMode ? (onlineMatchRef.current.slot || (onlineMatchRef.current.side === "left" ? "p1" : "p2")) : null;
 
   const sendLeaveForfeit = () => {
     const matchId = onlineMatchRef.current?.matchId;
@@ -1639,7 +1734,7 @@ const toggleFullscreen = async () => {
         setMenuStep("login");
         return;
       }
-      setMenuStep("online2v2");
+      setMenuStep("comingsoon");
       return;
     }
 
@@ -1914,6 +2009,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         label,
         playerName: playerName || "",
         isHuman,
+        remoteSlot: opts.remoteSlot || null,
         bindsRef,
         dummy: !!dummy,
         alive: true,
@@ -2091,11 +2187,36 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
       const e1Data = getColorData(e1.color, mirrorVariant(e1.color, p1.color));
       const e2Data = getColorData(e2.color, mirrorVariant(e2.color, p2.color));
 
-      fighters.push(makeFighter({ id: "p1", team: 1, isHuman: true, bindsRef: p1BindsRef, data: p1Data, x: 120, y: groundLevel - 60, facing: 1, label: "P1" }));
-      fighters.push(makeFighter({ id: "p2", team: 1, isHuman: true, bindsRef: p2BindsRef, data: p2Data, x: 220, y: groundLevel - 60, facing: 1, label: "P2" }));
+      const online2v2Active = mode === "online2v2" && !!onlineMatchRef.current?.matchId;
+      fighters.push(makeFighter({
+        id: "p1",
+        team: 1,
+        isHuman: true,
+        bindsRef: p1BindsRef,
+        data: p1Data,
+        x: 120,
+        y: groundLevel - 60,
+        facing: 1,
+        label: "P1",
+        playerName: p1.username,
+        remoteSlot: online2v2Active && onlineLocalSlot !== "p1" ? "p1" : null,
+      }));
+      fighters.push(makeFighter({
+        id: "p2",
+        team: 1,
+        isHuman: true,
+        bindsRef: online2v2Active ? p1BindsRef : p2BindsRef,
+        data: p2Data,
+        x: 220,
+        y: groundLevel - 60,
+        facing: 1,
+        label: "P2",
+        playerName: p2.username,
+        remoteSlot: online2v2Active && onlineLocalSlot !== "p2" ? "p2" : null,
+      }));
 
-      fighters.push(makeFighter({ id: "ai1", team: 2, isHuman: false, bindsRef: null, data: e1Data, x: 650, y: groundLevel - 60, facing: -1, label: "E1" }));
-      fighters.push(makeFighter({ id: "ai2", team: 2, isHuman: false, bindsRef: null, data: e2Data, x: 760, y: groundLevel - 60, facing: -1, label: "E2" }));
+      fighters.push(makeFighter({ id: "ai1", team: 2, isHuman: false, bindsRef: null, data: e1Data, x: 650, y: groundLevel - 60, facing: -1, label: "E1", playerName: e1.username, aiDifficulty: e1.aiDifficulty || gameConfig.difficulty || null }));
+      fighters.push(makeFighter({ id: "ai2", team: 2, isHuman: false, bindsRef: null, data: e2Data, x: 760, y: groundLevel - 60, facing: -1, label: "E2", playerName: e2.username, aiDifficulty: e2.aiDifficulty || gameConfig.difficulty || null }));
     };
 
     spawn();
@@ -2231,13 +2352,13 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
 
     const handleKeyDown = (e) => {
       if (isEditableEventTarget(e.target)) return;
-      if ((pausedRef.current && mode !== "online") || listeningForRef.current) return;
+      if ((pausedRef.current && mode !== "online" && mode !== "online2v2") || listeningForRef.current) return;
 
       const k = normalizeBindKey(e.key);
       if (!k) return;
 
       keysPressed.current[k] = true;
-      if (mode === "online" && onlineMatchRef.current?.matchId && menuStep === "playing") {
+      if ((mode === "online" || mode === "online2v2") && onlineMatchRef.current?.matchId && menuStep === "playing") {
         sendOnlineInputs();
       }
     };
@@ -2248,7 +2369,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
       if (!k) return;
 
       keysPressed.current[k] = false;
-      if (mode === "online" && onlineMatchRef.current?.matchId && menuStep === "playing") {
+      if ((mode === "online" || mode === "online2v2") && onlineMatchRef.current?.matchId && menuStep === "playing") {
         sendOnlineInputs();
       }
     };
@@ -4864,8 +4985,8 @@ if (hpW > 0) {
       if (p.frozen || p.hitstun || p.spearStunned || p.brownStunned) return;
 
       const binds = p.bindsRef?.current;
-      const isOnline = mode === "online" && onlineLocalTeam != null;
-      const isOnlineRemote = isOnline && p.team !== onlineLocalTeam;
+      const isOnline = (mode === "online" || mode === "online2v2") && onlineLocalTeam != null;
+      const isOnlineRemote = isOnline && (p.remoteSlot || (mode === "online" && p.team !== onlineLocalTeam));
       const actionBinds = isOnline
         ? isOnlineRemote
           ? (p.bindsRef?.current || onlineOpponentBindsRef.current)
@@ -4876,7 +4997,10 @@ if (hpW > 0) {
         ? !isOnlineRemote
         : p.id === "p1" || p.label === "P1";
       const getHeld = (action) => {
-        if (isOnlineRemote) return !!onlineRemoteInputsRef.current[action];
+        if (isOnlineRemote) {
+          if (p.remoteSlot) return !!onlineRemoteInputsRef.current[p.remoteSlot]?.[action];
+          return !!onlineRemoteInputsRef.current[action];
+        }
         const keyboardHeld = !!(actionBinds[action] && keysPressed.current[actionBinds[action]]);
         if (!canUseP1Controller) return keyboardHeld;
         const controllerInput = p1ControllerBindsRef.current?.[action];
@@ -4884,7 +5008,14 @@ if (hpW > 0) {
       };
       const clearHeld = (action) => {
         if (isOnlineRemote) {
-          onlineRemoteInputsRef.current[action] = false;
+          if (p.remoteSlot) {
+            onlineRemoteInputsRef.current[p.remoteSlot] = {
+              ...(onlineRemoteInputsRef.current[p.remoteSlot] || {}),
+              [action]: false,
+            };
+          } else {
+            onlineRemoteInputsRef.current[action] = false;
+          }
         } else if (actionBinds[action]) {
           keysPressed.current[actionBinds[action]] = false;
           const controllerInput = p1ControllerBindsRef.current?.[action];
@@ -6309,8 +6440,8 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
       drawStageBackground();
       drawPlatforms();
 
-      const isOnlineMatch = mode === "online" && !!onlineMatchRef.current?.matchId;
-      const isOnlineHost = isOnlineMatch && (onlineMatchRef.current?.host === true || onlineMatchRef.current?.side === "left");
+      const isOnlineMatch = (mode === "online" || mode === "online2v2") && !!onlineMatchRef.current?.matchId;
+      const isOnlineHost = isOnlineMatch && onlineMatchRef.current?.host === true;
       const shouldSimulate = !isOnlineMatch || isOnlineHost;
 
       if (shouldSimulate && !paused && !gameOver && roundPhaseRef.current === "countdown") {
@@ -6675,13 +6806,13 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 useEffect(() => {
   const match = onlineMatchRef.current;
   const socket = socketRef.current;
-  const isOnlineMatch = mode === "online" && menuStep === "playing" && match?.matchId;
+  const isOnlineMatch = (mode === "online" || mode === "online2v2") && menuStep === "playing" && match?.matchId;
   if (!isOnlineMatch || !socket || !gameOver || !matchWinnerText) return;
   if (onlineMatchEndSentRef.current) return;
 
   const p1Rounds = matchWinnerText === "Team 1" ? Math.max(team1Rounds, 2) : team1Rounds;
   const p2Rounds = matchWinnerText === "Team 2" ? Math.max(team2Rounds, 2) : team2Rounds;
-  const winnerId = matchWinnerText === "Team 1" ? match.p1UserId : matchWinnerText === "Team 2" ? match.p2UserId : null;
+  const winnerId = mode === "online2v2" ? null : matchWinnerText === "Team 1" ? match.p1UserId : matchWinnerText === "Team 2" ? match.p2UserId : null;
 
   onlineMatchEndSentRef.current = true;
   const finishOnlineMatch = () => {
@@ -6760,8 +6891,11 @@ useEffect(() => {
                   if (!socketRef.current) return;
                   setCharSelect((prev) => prev ? { ...prev, me: c } : prev);
                   try {
+                    const slot = matched?.slot || onlineMatchRef.current?.slot;
                     const side = matched?.side || (onlineMatchRef.current && onlineMatchRef.current.side) || 'left';
-                    if (side === 'left') setP1Color(c); else setP2Color(c);
+                    if (slot === "p2") setP2Color(c);
+                    else if (side === 'left') setP1Color(c);
+                    else setP2Color(c);
                   } catch (e) {}
                   socketRef.current.emit('char:selected', { matchId, character: c });
                 }}
@@ -7514,8 +7648,10 @@ useEffect(() => {
                   <div className="font-medium">{friend.username}</div>
                   <div className="text-xs text-gray-500 mb-2">{friend.wins || 0}W - {friend.losses || 0}L</div>
                   <div className="flex flex-wrap gap-2">
-                    <button onClick={() => { playSfx("menu_select"); setFriendsMessage(`Private 1v1 request prepared for ${friend.username}.`); }} className="rounded-xl bg-blue-600 text-white px-3 py-2 text-sm">Private 1v1</button>
-                    <button onClick={() => { playSfx("menu_select"); setFriendsMessage(`Private 2v2 request prepared for ${friend.username}. Invite two more friends next.`); }} className="rounded-xl bg-purple-600 text-white px-3 py-2 text-sm">Private 2v2</button>
+                    <button onClick={() => sendInviteToFriend(friend.id, friend.username, "private1v1")} className="rounded-xl bg-blue-600 text-white px-3 py-2 text-sm">Private 1v1</button>
+                    <button onClick={() => sendInviteToFriend(friend.id, friend.username, "private2v2")} className="rounded-xl bg-purple-600 text-white px-3 py-2 text-sm">Private 2v2</button>
+                    <button onClick={() => sendInviteToFriend(friend.id, friend.username, "online2v2")} className="rounded-xl bg-green-600 text-white px-3 py-2 text-sm">Invite 2v2 Online</button>
+                    <button onClick={() => unfriendUser(friend.id, friend.username)} className="rounded-xl bg-red-600 text-white px-3 py-2 text-sm">Unadd</button>
                   </div>
                 </div>
               ))}
@@ -7528,7 +7664,17 @@ useEffect(() => {
             ].map(([title, requests]) => (
               <section key={title} className="rounded-3xl border border-gray-100 p-5">
                 <h2 className="text-2xl font-light mb-4">{title}</h2>
-                {requests.length === 0 ? <p className="text-sm text-gray-500">No active requests.</p> : requests.map((request) => <div key={request.id}>{request.username}</div>)}
+                {requests.length === 0 ? (
+                  <p className="text-sm text-gray-500">No active requests.</p>
+                ) : requests.map((request) => (
+                  <div key={request.id} className="flex items-center justify-between gap-3 border-t border-gray-100 py-3">
+                    <span>{request.username}</span>
+                    <div className="flex gap-2">
+                      <button onClick={() => respondToGameInvite(request.id, "accept")} className="rounded-xl bg-green-600 text-white px-3 py-2 text-sm">Accept</button>
+                      <button onClick={() => respondToGameInvite(request.id, "decline")} className="rounded-xl bg-red-600 text-white px-3 py-2 text-sm">Decline</button>
+                    </div>
+                  </div>
+                ))}
               </section>
             ))}
           </div>
@@ -7622,12 +7768,12 @@ useEffect(() => {
     );
   }
 
-  if (mode === "online" && menuStep !== "playing") {
+  if ((mode === "online" || mode === "online2v2") && menuStep !== "playing") {
     return (
       <Layout>
         <CharSelectModal />
         <div className="bg-white rounded-3xl p-8 text-center max-w-4xl border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
-          <h1 className="text-5xl font-light text-gray-900 mb-4">Online 1v1</h1>
+          <h1 className="text-5xl font-light text-gray-900 mb-4">{mode === "online2v2" ? "Online 2v2" : "Online 1v1"}</h1>
 
           {!user ? (
             <div className="space-y-6">
@@ -7674,6 +7820,12 @@ useEffect(() => {
                   onClick={() => {
                     setOnlineError("");
                     if (socketRef.current) socketRef.current.disconnect();
+                    const privateInvite = pendingPrivateInviteRef.current;
+                    const teamInvite = pendingTeamInviteRef.current;
+                    if (mode === "online2v2" && !teamInvite?.inviteId) {
+                      setOnlineError("Invite a friend from Friends List first, then accept/join the 2v2 request.");
+                      return;
+                    }
                     const sockToken = token || (typeof localStorage !== 'undefined' ? localStorage.getItem('rgb_token') : null);
                     const s = createSocket(sockToken);
                     try {
@@ -7688,7 +7840,33 @@ useEffect(() => {
 
                     s.on('connect', () => {
                       setOnlineError("");
-                      s.emit('queue:join', { side: 'left' });
+                      if (teamInvite?.inviteId) {
+                        s.emit('team:join', { inviteId: teamInvite.inviteId });
+                      } else if (privateInvite?.inviteId) {
+                        s.emit('private:join', { inviteId: privateInvite.inviteId });
+                      } else {
+                        s.emit('queue:join', { side: 'left' });
+                      }
+                    });
+
+                    s.on('private:waiting', () => {
+                      setQueueing(true);
+                      setOnlineError("Waiting for your friend to join the private match...");
+                    });
+
+                    s.on('match:error', (payload) => {
+                      setQueueing(false);
+                      setOnlineError(payload?.error || "Matchmaking error.");
+                    });
+
+                    s.on('team:waiting', () => {
+                      setQueueing(true);
+                      setOnlineError("Waiting for your friend to join the 2v2 team...");
+                    });
+
+                    s.on('team:queued', () => {
+                      setQueueing(true);
+                      setOnlineError("Team ready. Searching for opponents... bot team starts after 15 seconds if nobody is found.");
                     });
 
                     s.on('queue:matched', (d) => {
@@ -7703,7 +7881,7 @@ useEffect(() => {
                       if (d?.matchId) {
                         setMatched((prev) => {
                           if (prev && prev.matchId === d.matchId) return prev;
-                          return { ...(prev || {}), matchId: d.matchId, side: d.side || prev?.side };
+                          return { ...(prev || {}), matchId: d.matchId, side: d.side || prev?.side, slot: d.slot || prev?.slot, mode: d.mode || prev?.mode };
                         });
                       }
                       setCharSelect({
@@ -7717,8 +7895,11 @@ useEffect(() => {
                       });
                       if (lockedSecretColor && nextMatchId) {
                         try {
+                          const slot = matched?.slot || onlineMatchRef.current?.slot;
                           const side = matched?.side || onlineMatchRef.current?.side || "left";
-                          if (side === "left") setP1Color(lockedSecretColor); else setP2Color(lockedSecretColor);
+                          if (slot === "p2") setP2Color(lockedSecretColor);
+                          else if (side === "left") setP1Color(lockedSecretColor);
+                          else setP2Color(lockedSecretColor);
                         } catch {}
                         s.emit('char:selected', { matchId: nextMatchId, character: lockedSecretColor });
                       }
@@ -7731,11 +7912,15 @@ useEffect(() => {
                         return { ...prev, opponent: c || prev.opponent };
                       });
 
-                      const side = payload?.side || matched?.side || (onlineMatchRef.current && onlineMatchRef.current.side) || 'right';
-                      if (side === 'left') {
-                        setP2Color((prev) => c || prev);
-                      } else {
-                        setP1Color((prev) => c || prev);
+                      if (payload?.slot === "p1") setP1Color((prev) => c || prev);
+                      else if (payload?.slot === "p2") setP2Color((prev) => c || prev);
+                      else {
+                        const side = payload?.side || matched?.side || (onlineMatchRef.current && onlineMatchRef.current.side) || 'right';
+                        if (side === 'left') {
+                          setP2Color((prev) => c || prev);
+                        } else {
+                          setP1Color((prev) => c || prev);
+                        }
                       }
                     });
 
@@ -7784,11 +7969,13 @@ useEffect(() => {
     });
 
                     s.on('match:start', (d) => {
+                      pendingPrivateInviteRef.current = null;
+                      pendingTeamInviteRef.current = null;
                       resetAll();
                       if (d?.matchId) {
                         setMatched((prev) => (prev && prev.matchId === d.matchId ? prev : { ...(prev || {}), matchId: d.matchId, side: d.side }));
                       }
-                      const isHost = d.host === true || d.side === 'left';
+                      const isHost = d.host === true;
                       onlineMatchRef.current = {
                         matchId: d.matchId || (matched && matched.matchId),
                         side: d.side,
@@ -7799,6 +7986,14 @@ useEffect(() => {
                         p2UserId: d.p2UserId,
                         p1Username: d.p1Username,
                         p2Username: d.p2Username,
+                        mode: d.mode || mode,
+                        slot: d.slot,
+                        p1Char: d.p1Char,
+                        p2Char: d.p2Char,
+                        e1Char: d.e1Char,
+                        e2Char: d.e2Char,
+                        e1Username: d.e1Username,
+                        e2Username: d.e2Username,
                       };
                       onlineIsHostRef.current = isHost;
                       onlineMatchEndSentRef.current = false;
@@ -7813,9 +8008,11 @@ useEffect(() => {
                       });
                       setP1Color(d.p1Char || p1Color);
                       setP2Color(d.p2Char || p2Color);
+                      if (d.e1Char) setOpp1Color(d.e1Char);
+                      if (d.e2Char) setOpp2Color(d.e2Char);
                       setStage(d.stage || "default");
                       setCharSelect(null);
-                      setMode('online');
+                      setMode(d.mode === "online2v2" ? "online2v2" : "online");
                       onlineRemoteInputsRef.current = {};
                       setMenuStep('playing');
                       setTimeout(() => {
@@ -7830,12 +8027,19 @@ useEffect(() => {
                         if (!m) return;
                         const inputs = payload?.inputs ?? payload;
                         window.__lastRemoteInputs = inputs;
-                        onlineRemoteInputsRef.current = { ...(inputs || {}) };
+                        if (payload?.slot) {
+                          onlineRemoteInputsRef.current = {
+                            ...onlineRemoteInputsRef.current,
+                            [payload.slot]: { ...(inputs || {}) },
+                          };
+                        } else {
+                          onlineRemoteInputsRef.current = { ...(inputs || {}) };
+                        }
                       });
 
                       s.on('state:sync', (payload) => {
                         const m = onlineMatchRef.current;
-                        if (!m || m.host || m.side === "left") return;
+                        if (!m || m.host) return;
                         if (payload?.matchId && payload.matchId !== m.matchId) return;
                         const incomingState = payload?.state || payload;
                         applyOnlineState({ ...incomingState, matchId: payload?.matchId || incomingState?.matchId || m.matchId });
@@ -7879,7 +8083,7 @@ useEffect(() => {
                   }}
                   className="bg-green-600 text-white rounded-2xl px-6 py-3 hover:opacity-90 transition"
                 >
-                  Search For Opponent
+                  {mode === "online2v2" ? "Join Team Queue" : pendingPrivateInviteRef.current ? "Join Private Match" : "Search For Opponent"}
                 </button>
                 ) : (
                   <button onClick={() => {

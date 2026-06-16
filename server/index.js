@@ -126,8 +126,11 @@ app.post('/api/match/state/:matchId', async (req, res) => {
 const PORT = process.env.PORT || 3001;
 
 const matchmakingQueue = [];
+const teamMatchmakingQueue = [];
 const activeMatches = new Map();
 const socketUserMap = new Map();
+const privateInviteSessions = new Map();
+const teamInviteSessions = new Map();
 const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS || 10000);
 const STAGES = ['default', 'recursion', 'sky', 'hourglass', 'bottom'];
 const BOT_NAMES = ['PixelRival', 'NeonByte', 'StageGhost', 'ComboBot', 'RGBCPU', 'LaglessLegend', 'PrismAI', 'OrbitBot'];
@@ -136,7 +139,10 @@ const BOT_DIFFICULTIES = ['easy', 'medium', 'hard'];
 const randomStage = () => STAGES[Math.floor(Math.random() * STAGES.length)];
 const randomChoice = (items) => items[Math.floor(Math.random() * items.length)];
 const isBotPlayer = (player) => !!player?.bot;
-const socketIdsForMatch = (match) => [match?.p1?.socketId, match?.p2?.socketId].filter(Boolean);
+const socketIdsForMatch = (match) => {
+  if (Array.isArray(match?.players)) return match.players.map((player) => player.socketId).filter(Boolean);
+  return [match?.p1?.socketId, match?.p2?.socketId].filter(Boolean);
+};
 
 function resolveMapVote(votes) {
   const counts = new Map();
@@ -157,6 +163,20 @@ function emitToMatch(match, event, payloadFactory) {
 async function forfeitMatch(matchId, leavingSocketId) {
   const match = activeMatches.get(matchId);
   if (!match) return false;
+
+  if (match.mode === '2v2') {
+    const leavingPlayer = match.players?.find((player) => player.socketId === leavingSocketId);
+    const losingTeam = leavingPlayer?.team || 1;
+    const winnerTeamText = losingTeam === 1 ? 'Team 2' : 'Team 1';
+    try {
+      await processMatchResult(matchId, winnerTeamText === 'Team 1' ? 2 : 0, winnerTeamText === 'Team 2' ? 2 : 0, null, winnerTeamText);
+    } catch (err) {
+      console.error('2v2 forfeit db err', err);
+      return false;
+    }
+    emitToMatch(match, 'match:ended', { winnerTeam: winnerTeamText });
+    return true;
+  }
 
   const leavingIsP1 = match.p1.socketId === leavingSocketId;
   const winner = leavingIsP1 ? match.p2 : match.p1;
@@ -183,7 +203,9 @@ async function recordMatchResultFromState(matchId, state) {
   const team2Rounds = Number(state.team2Rounds) || 0;
   const p1Rounds = state.matchWinnerText === 'Team 1' ? Math.max(team1Rounds, 2) : team1Rounds;
   const p2Rounds = state.matchWinnerText === 'Team 2' ? Math.max(team2Rounds, 2) : team2Rounds;
-  const winnerId = state.matchWinnerText === 'Team 1'
+  const winnerId = match.mode === '2v2'
+    ? null
+    : state.matchWinnerText === 'Team 1'
     ? match.p1.userId
     : state.matchWinnerText === 'Team 2'
       ? match.p2.userId || null
@@ -202,6 +224,49 @@ async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId, winnerT
   try {
     let eloChange = 0;
     let isP1Winner = false;
+    const p1WonText = winnerTeamText === 'Team 1';
+    const p2WonText = winnerTeamText === 'Team 2';
+
+    if (match.private) {
+      emitToMatch(match, 'match:result', (socketId) => {
+        const player = match.players?.find((entry) => entry.socketId === socketId);
+        const winner = player ? (player.team === 1 ? p1WonText : p2WonText) : socketId === match.p1?.socketId ? p1WonText : p2WonText;
+        return { winner, newElo: 0, wins: undefined, losses: undefined, eloChange: 0 };
+      });
+      activeMatches.delete(matchId);
+      return true;
+    }
+
+    if (match.mode === '2v2') {
+      const team1Won = winnerTeamText === 'Team 1' || p1Rounds > p2Rounds;
+      const humans = (match.players || []).filter((player) => player.userId && !player.bot);
+      for (const player of humans) {
+        const won = player.team === 1 ? team1Won : !team1Won;
+        await pool.query(
+          `UPDATE users SET ${won ? 'wins' : 'losses'} = ${won ? 'wins' : 'losses'} + 1 WHERE id = $1`,
+          [player.userId]
+        );
+      }
+      await pool.query(
+        'INSERT INTO matches (player1_id, player2_id, winner_id, p1_rounds, p2_rounds, elo_change) VALUES ($1, $2, $3, $4, $5, $6)',
+        [match.p1?.userId || null, match.p2?.userId || null, team1Won ? match.p1?.userId || null : null, p1Rounds, p2Rounds, 0]
+      );
+      for (const player of humans) {
+        const recordResult = await pool.query('SELECT elo, wins, losses FROM users WHERE id = $1', [player.userId]);
+        const record = recordResult.rows?.[0] || { elo: 0, wins: 0, losses: 0 };
+        if (player.socketId) {
+          io.to(player.socketId).emit('match:result', {
+            winner: player.team === 1 ? team1Won : !team1Won,
+            newElo: record.elo,
+            wins: record.wins,
+            losses: record.losses,
+            eloChange: 0,
+          });
+        }
+      }
+      activeMatches.delete(matchId);
+      return true;
+    }
     const p1IsBot = isBotPlayer(match.p1);
     const p2IsBot = isBotPlayer(match.p2);
     const p1Won = winnerTeamText === 'Team 1' || (!!winnerId && String(winnerId) === String(match.p1.userId));
@@ -367,6 +432,8 @@ io.on('connection', (socket) => {
       timeLimit: 20000,
       matchId,
       side: socketId === match.p1.socketId ? 'left' : 'right',
+      slot: socketId === match.p2.socketId ? 'p2' : 'p1',
+      mode: match.mode === '2v2' ? 'online2v2' : 'online',
       requireMap: true,
       stages: STAGES,
     }));
@@ -410,6 +477,42 @@ io.on('connection', (socket) => {
     match.stage = resolveMapVote([match.p1Map, match.p2Map]);
     match.started = true;
 
+    if (match.mode === '2v2') {
+      const common = {
+        matchId,
+        mode: 'online2v2',
+        stage: match.stage,
+        bot: true,
+        p1Char: match.p1Char,
+        p2Char: match.p2Char,
+        e1Char: match.e1Char,
+        e2Char: match.e2Char,
+        p1UserId: match.p1.userId || null,
+        p2UserId: match.p2.userId || null,
+        p1Username: match.p1.username,
+        p2Username: match.p2.username,
+        e1Username: match.players?.[2]?.username || 'Bot E1',
+        e2Username: match.players?.[3]?.username || 'Bot E2',
+      };
+      if (match.p1.socketId) {
+        io.to(match.p1.socketId).emit('match:start', {
+          ...common,
+          side: 'left',
+          slot: 'p1',
+          host: true,
+        });
+      }
+      if (match.p2.socketId) {
+        io.to(match.p2.socketId).emit('match:start', {
+          ...common,
+          side: 'left',
+          slot: 'p2',
+          host: false,
+        });
+      }
+      return;
+    }
+
     const common = {
       matchId,
       p1Char: match.p1Char,
@@ -439,13 +542,14 @@ io.on('connection', (socket) => {
     }
   };
 
-  const createOnline1v1Match = async (p1, p2, { bot = false } = {}) => {
+  const createOnline1v1Match = async (p1, p2, { bot = false, privateMatch = false } = {}) => {
     const matchId = `${p1.socketId || 'bot'}_${p2.socketId || 'bot'}_${Date.now()}`;
     const hostSocketId = p1.socketId || p2.socketId;
 
     activeMatches.set(matchId, {
       matchId,
       mode: '1v1',
+      private: privateMatch,
       p1,
       p2,
       bot,
@@ -503,6 +607,93 @@ io.on('connection', (socket) => {
     stage: randomStage(),
   });
 
+  const createOnline2v2Match = async (teamPlayers, { privateMatch = false } = {}) => {
+    const [p1, p2] = teamPlayers;
+    const enemy1 = { ...createBotOpponent(), username: randomChoice(BOT_NAMES), team: 2, slot: 'e1' };
+    const enemy2 = { ...createBotOpponent(), username: randomChoice(BOT_NAMES), team: 2, slot: 'e2' };
+    const matchId = `2v2_${p1.socketId}_${p2.socketId}_${Date.now()}`;
+    const hostSocketId = p1.socketId;
+    const players = [
+      { ...p1, team: 1, slot: 'p1' },
+      { ...p2, team: 1, slot: 'p2' },
+      enemy1,
+      enemy2,
+    ];
+
+    activeMatches.set(matchId, {
+      matchId,
+      mode: '2v2',
+      private: privateMatch,
+      p1: players[0],
+      p2: players[1],
+      players,
+      hostSocketId,
+      bot: true,
+      p1Ready: false,
+      p2Ready: false,
+      p1Char: null,
+      p2Char: null,
+      e1Char: enemy1.character,
+      e2Char: enemy2.character,
+      p1Map: null,
+      p2Map: null,
+      stage: null,
+      startTime: Date.now(),
+      started: false,
+    });
+
+    const p1Stats = await getOpponentStats(p1.userId, p1.username);
+    const p2Stats = await getOpponentStats(p2.userId, p2.username);
+    const match = activeMatches.get(matchId);
+
+    io.to(p1.socketId).emit('queue:matched', {
+      matchId,
+      mode: 'online2v2',
+      opponent: { username: `${enemy1.username} + ${enemy2.username}`, wins: 0, losses: 0, bot: true },
+      teammate: { username: p2.username, wins: p2Stats.wins, losses: p2Stats.losses },
+      side: 'left',
+      slot: 'p1',
+      bot: true,
+    });
+    io.to(p2.socketId).emit('queue:matched', {
+      matchId,
+      mode: 'online2v2',
+      opponent: { username: `${enemy1.username} + ${enemy2.username}`, wins: 0, losses: 0, bot: true },
+      teammate: { username: p1.username, wins: p1Stats.wins, losses: p1Stats.losses },
+      side: 'left',
+      slot: 'p2',
+      bot: true,
+    });
+
+    setTimeout(() => {
+      const current = activeMatches.get(matchId);
+      if (!current) return;
+      startSelectTimer(matchId);
+      maybeStartMatch(matchId);
+    }, 600);
+
+    return match;
+  };
+
+  const queueTeamFor2v2 = async (teamPlayers, { privateMatch = false } = {}) => {
+    if (privateMatch) {
+      await createOnline2v2Match(teamPlayers, { privateMatch: true });
+      return;
+    }
+
+    const queuedTeam = { teamPlayers, createdAt: Date.now() };
+    queuedTeam.botTimer = setTimeout(async () => {
+      const index = teamMatchmakingQueue.indexOf(queuedTeam);
+      if (index === -1) return;
+      teamMatchmakingQueue.splice(index, 1);
+      await createOnline2v2Match(teamPlayers, { privateMatch: false }).catch((err) => console.error('2v2 bot match err', err));
+    }, 15000);
+    teamMatchmakingQueue.push(queuedTeam);
+    teamPlayers.forEach((player) => {
+      io.to(player.socketId).emit('team:queued', { waitMs: 15000 });
+    });
+  };
+
   socket.on('queue:join', async (data) => {
     const { side, mode = '1v1' } = data || {};
     const userId = socket.userId;
@@ -512,7 +703,7 @@ io.on('connection', (socket) => {
     console.log(`${username} (${socket.id}) joined queue, side: ${side}, mode: ${mode}`);
 
     if (mode !== '1v1') {
-      socket.emit('match:error', { error: '2v2 matchmaking is being upgraded. Use 1v1 while the 2v2 socket pass finishes.' });
+      socket.emit('match:error', { error: 'Use a 2v2 Online friend invite, then Join Team Queue.' });
       return;
     }
 
@@ -530,6 +721,122 @@ io.on('connection', (socket) => {
         await createOnline1v1Match(waitingPlayer, createBotOpponent(), { bot: true }).catch((err) => console.error('bot match err', err));
       }, 15000);
       matchmakingQueue.push(queuePlayer);
+    }
+  });
+
+  socket.on('private:join', async (data) => {
+    try {
+      const inviteId = Number(data?.inviteId);
+      if (!inviteId) return socket.emit('match:error', { error: 'Missing invite id' });
+
+      const result = await pool.query(
+        `SELECT gi.id, gi.invite_type, gi.from_user_id, gi.to_user_id, gi.status, gi.created_at,
+                from_user.username AS from_username,
+                to_user.username AS to_username
+         FROM game_invites gi
+         JOIN users from_user ON from_user.id = gi.from_user_id
+         JOIN users to_user ON to_user.id = gi.to_user_id
+         WHERE gi.id = $1`,
+        [inviteId]
+      );
+      const invite = result.rows?.[0];
+      if (!invite || invite.status !== 'accepted') return socket.emit('match:error', { error: 'Invite is not accepted yet' });
+      if (Date.now() - new Date(invite.created_at || Date.now()).getTime() > 60000) {
+        await pool.query('UPDATE game_invites SET status = $1 WHERE id = $2', ['expired', inviteId]);
+        return socket.emit('match:error', { error: 'Invite expired' });
+      }
+      if (invite.invite_type !== 'private1v1') return socket.emit('match:error', { error: 'This invite type is not ready for match launch yet' });
+      if (Number(socket.userId) !== Number(invite.from_user_id) && Number(socket.userId) !== Number(invite.to_user_id)) {
+        return socket.emit('match:error', { error: 'You are not part of this invite' });
+      }
+
+      const session = privateInviteSessions.get(inviteId) || {
+        invite,
+        participants: new Map(),
+      };
+      session.participants.set(Number(socket.userId), {
+        socketId: socket.id,
+        userId: socket.userId,
+        username: socket.username,
+        privateInviteId: inviteId,
+      });
+      privateInviteSessions.set(inviteId, session);
+      socket.emit('private:waiting', { inviteId });
+
+      const fromPlayer = session.participants.get(Number(invite.from_user_id));
+      const toPlayer = session.participants.get(Number(invite.to_user_id));
+      if (!fromPlayer || !toPlayer) return;
+
+      privateInviteSessions.delete(inviteId);
+      await pool.query('UPDATE game_invites SET status = $1 WHERE id = $2', ['consumed', inviteId]);
+      await createOnline1v1Match(
+        { ...fromPlayer, username: invite.from_username },
+        { ...toPlayer, username: invite.to_username },
+        { privateMatch: true }
+      );
+    } catch (err) {
+      console.error('private join error', err);
+      socket.emit('match:error', { error: 'Could not join private match' });
+    }
+  });
+
+  socket.on('team:join', async (data) => {
+    try {
+      const inviteId = Number(data?.inviteId);
+      if (!inviteId) return socket.emit('match:error', { error: 'Missing invite id' });
+
+      const result = await pool.query(
+        `SELECT gi.id, gi.invite_type, gi.from_user_id, gi.to_user_id, gi.status, gi.created_at,
+                from_user.username AS from_username,
+                to_user.username AS to_username
+         FROM game_invites gi
+         JOIN users from_user ON from_user.id = gi.from_user_id
+         JOIN users to_user ON to_user.id = gi.to_user_id
+         WHERE gi.id = $1`,
+        [inviteId]
+      );
+      const invite = result.rows?.[0];
+      if (!invite || invite.status !== 'accepted') return socket.emit('match:error', { error: 'Invite is not accepted yet' });
+      if (Date.now() - new Date(invite.created_at || Date.now()).getTime() > 60000) {
+        await pool.query('UPDATE game_invites SET status = $1 WHERE id = $2', ['expired', inviteId]);
+        return socket.emit('match:error', { error: 'Invite expired' });
+      }
+      if (!['private2v2', 'online2v2'].includes(invite.invite_type)) {
+        return socket.emit('match:error', { error: 'This is not a 2v2 invite' });
+      }
+      if (Number(socket.userId) !== Number(invite.from_user_id) && Number(socket.userId) !== Number(invite.to_user_id)) {
+        return socket.emit('match:error', { error: 'You are not part of this invite' });
+      }
+
+      const session = teamInviteSessions.get(inviteId) || {
+        invite,
+        participants: new Map(),
+      };
+      session.participants.set(Number(socket.userId), {
+        socketId: socket.id,
+        userId: socket.userId,
+        username: socket.username,
+        teamInviteId: inviteId,
+      });
+      teamInviteSessions.set(inviteId, session);
+      socket.emit('team:waiting', { inviteId, inviteType: invite.invite_type });
+
+      const fromPlayer = session.participants.get(Number(invite.from_user_id));
+      const toPlayer = session.participants.get(Number(invite.to_user_id));
+      if (!fromPlayer || !toPlayer) return;
+
+      teamInviteSessions.delete(inviteId);
+      await pool.query('UPDATE game_invites SET status = $1 WHERE id = $2', ['consumed', inviteId]);
+      await queueTeamFor2v2(
+        [
+          { ...fromPlayer, username: invite.from_username },
+          { ...toPlayer, username: invite.to_username },
+        ],
+        { privateMatch: invite.invite_type === 'private2v2' }
+      );
+    } catch (err) {
+      console.error('team join error', err);
+      socket.emit('match:error', { error: 'Could not join 2v2 team' });
     }
   });
 
@@ -553,11 +860,11 @@ io.on('connection', (socket) => {
     if (isP1) {
       match.p1Char = selectedCharacter;
       match.p1Ready = true;
-      if (match.p2.socketId) io.to(match.p2.socketId).emit('opponent:charSelected', { character: selectedCharacter });
+      if (match.p2.socketId) io.to(match.p2.socketId).emit('opponent:charSelected', { character: selectedCharacter, slot: 'p1' });
     } else {
       match.p2Char = selectedCharacter;
       match.p2Ready = true;
-      if (match.p1.socketId) io.to(match.p1.socketId).emit('opponent:charSelected', { character: selectedCharacter });
+      if (match.p1.socketId) io.to(match.p1.socketId).emit('opponent:charSelected', { character: selectedCharacter, slot: 'p2' });
     }
 
     maybeStartMatch(matchId);
@@ -584,6 +891,15 @@ io.on('connection', (socket) => {
     const { matchId, inputs } = data || {};
     const match = activeMatches.get(matchId);
     if (!match) return;
+
+    if (match.mode === '2v2') {
+      const player = match.players?.find((entry) => entry.socketId === socket.id);
+      if (!player) return;
+      socketIdsForMatch(match).forEach((socketId) => {
+        if (socketId !== socket.id) io.to(socketId).emit('input:opponent', { matchId, inputs, slot: player.slot });
+      });
+      return;
+    }
 
     // only accept inputs from participants
     if (socket.id !== match.p1.socketId && socket.id !== match.p2.socketId) return;
@@ -615,6 +931,14 @@ io.on('connection', (socket) => {
       const [queued] = matchmakingQueue.splice(idx, 1);
       if (queued?.botTimer) clearTimeout(queued.botTimer);
       socket.emit('queue:cancelled');
+    }
+    const teamIndex = teamMatchmakingQueue.findIndex((entry) => entry.teamPlayers?.some((player) => player.socketId === socket.id));
+    if (teamIndex !== -1) {
+      const [queuedTeam] = teamMatchmakingQueue.splice(teamIndex, 1);
+      if (queuedTeam?.botTimer) clearTimeout(queuedTeam.botTimer);
+      queuedTeam.teamPlayers?.forEach((player) => {
+        if (player.socketId) io.to(player.socketId).emit('queue:cancelled');
+      });
     }
   });
 
@@ -654,6 +978,11 @@ io.on('connection', (socket) => {
     if (queueIndex !== -1) {
       const [queued] = matchmakingQueue.splice(queueIndex, 1);
       if (queued?.botTimer) clearTimeout(queued.botTimer);
+    }
+    const teamQueueIndex = teamMatchmakingQueue.findIndex((entry) => entry.teamPlayers?.some((player) => player.socketId === socket.id));
+    if (teamQueueIndex !== -1) {
+      const [queuedTeam] = teamMatchmakingQueue.splice(teamQueueIndex, 1);
+      if (queuedTeam?.botTimer) clearTimeout(queuedTeam.botTimer);
     }
 
     for (const [matchId, match] of activeMatches.entries()) {

@@ -110,6 +110,39 @@ export async function respondFriendRequest(token, requestId, action) {
   });
 }
 
+export async function unfriend(token, friendId) {
+  return request('/api/friends/unfriend', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ friendId }),
+  });
+}
+
+export async function sendGameInvite(token, friendId, inviteType) {
+  return request('/api/friends/invite', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ friendId, inviteType }),
+  });
+}
+
+export async function respondGameInvite(token, inviteId, action) {
+  return request('/api/friends/invite/respond', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ inviteId, action }),
+  });
+}
+
 export async function unlockLadderAchievement(token, color, difficulty) {
   return request('/api/achievements/ladder', {
     method: 'POST',
@@ -132,5 +165,8 @@ export default {
   getFriends,
   sendFriendRequest,
   respondFriendRequest,
+  unfriend,
+  sendGameInvite,
+  respondGameInvite,
   unlockLadderAchievement,
 };

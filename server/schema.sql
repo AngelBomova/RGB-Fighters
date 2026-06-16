@@ -45,8 +45,18 @@ CREATE TABLE IF NOT EXISTS friends (
   UNIQUE(user_id, friend_id)
 );
 
+CREATE TABLE IF NOT EXISTS game_invites (
+  id SERIAL PRIMARY KEY,
+  from_user_id INTEGER REFERENCES users(id),
+  to_user_id INTEGER REFERENCES users(id),
+  invite_type TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_users_elo ON users(elo DESC);
 CREATE INDEX IF NOT EXISTS idx_users_wins ON users(wins DESC);
 CREATE INDEX IF NOT EXISTS idx_achievements_user ON achievements(user_id);
 CREATE INDEX IF NOT EXISTS idx_friend_requests_to_user ON friend_requests(to_user_id, status);
 CREATE INDEX IF NOT EXISTS idx_friends_user ON friends(user_id);
+CREATE INDEX IF NOT EXISTS idx_game_invites_to_user ON game_invites(to_user_id, status, invite_type);
