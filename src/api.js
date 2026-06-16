@@ -10,7 +10,7 @@ async function request(path, opts = {}) {
     throw { error: 'Could not reach the online server.' };
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw data;
+  if (!res.ok) throw { ...data, status: res.status, error: data.error || `Server returned ${res.status}` };
   return data;
 }
 
@@ -34,6 +34,27 @@ export async function me(token) {
   return request('/api/auth/me', {
     headers: { Authorization: `Bearer ${token}` },
   });
+}
+
+export async function resetPassword(token, currentPassword, newPassword) {
+  try {
+    return await request('/api/auth/reset-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ token, currentPassword, newPassword }),
+    });
+  } catch (err) {
+    if (err?.status === 404) {
+      throw {
+        ...err,
+        error: 'Password reset route is missing on the running server. Restart or redeploy the backend.',
+      };
+    }
+    throw err;
+  }
 }
 
 export async function getLeaderboard() {
@@ -61,6 +82,34 @@ export async function getAchievements(token) {
   });
 }
 
+export async function getFriends(token) {
+  return request('/api/friends', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function sendFriendRequest(token, username) {
+  return request('/api/friends/request', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ username }),
+  });
+}
+
+export async function respondFriendRequest(token, requestId, action) {
+  return request('/api/friends/respond', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ requestId, action }),
+  });
+}
+
 export async function unlockLadderAchievement(token, color, difficulty) {
   return request('/api/achievements/ladder', {
     method: 'POST',
@@ -72,4 +121,16 @@ export async function unlockLadderAchievement(token, color, difficulty) {
   });
 }
 
-export default { register, login, me, getLeaderboard, getRank, getAchievements, unlockLadderAchievement };
+export default {
+  register,
+  login,
+  me,
+  resetPassword,
+  getLeaderboard,
+  getRank,
+  getAchievements,
+  getFriends,
+  sendFriendRequest,
+  respondFriendRequest,
+  unlockLadderAchievement,
+};

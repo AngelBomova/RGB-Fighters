@@ -37,6 +37,17 @@ function FighterGame() {
       return null;
     }
   });
+  const [passwordResetOpen, setPasswordResetOpen] = useState(false);
+  const [friendsData, setFriendsData] = useState({
+    incoming: [],
+    outgoing: [],
+    friends: [],
+    private1v1Requests: [],
+    private2v2Requests: [],
+    online2v2Requests: [],
+  });
+  const [friendsLoading, setFriendsLoading] = useState(false);
+  const [friendsMessage, setFriendsMessage] = useState("");
 
   useEffect(() => {
     if (!token) return;
@@ -561,6 +572,39 @@ const toggleFullscreen = async () => {
     } catch {}
   };
 
+  const getAuthToken = () => token || (typeof localStorage !== "undefined" ? localStorage.getItem("rgb_token") : null);
+
+  const refreshFriends = () => {
+    const authToken = getAuthToken();
+    if (!authToken) return;
+    setFriendsLoading(true);
+    api.getFriends(authToken).then((data) => {
+      setFriendsData({
+        incoming: Array.isArray(data?.incoming) ? data.incoming : [],
+        outgoing: Array.isArray(data?.outgoing) ? data.outgoing : [],
+        friends: Array.isArray(data?.friends) ? data.friends : [],
+        private1v1Requests: Array.isArray(data?.private1v1Requests) ? data.private1v1Requests : [],
+        private2v2Requests: Array.isArray(data?.private2v2Requests) ? data.private2v2Requests : [],
+        online2v2Requests: Array.isArray(data?.online2v2Requests) ? data.online2v2Requests : [],
+      });
+      setFriendsMessage("");
+    }).catch((err) => {
+      setFriendsMessage(err?.error || "Could not load friends.");
+    }).finally(() => setFriendsLoading(false));
+  };
+
+  const respondToFriendRequest = (requestId, action) => {
+    playSfx(action === "accept" ? "menu_select" : "menu_back");
+    const authToken = getAuthToken();
+    if (!authToken) return;
+    api.respondFriendRequest(authToken, requestId, action).then(() => {
+      setFriendsMessage(action === "accept" ? "Friend request accepted." : "Friend request declined.");
+      refreshFriends();
+    }).catch((err) => {
+      setFriendsMessage(err?.error || "Could not update friend request.");
+    });
+  };
+
   const unlockAudio = () => {
     if (audioUnlockedRef.current) return;
     audioUnlockedRef.current = true;
@@ -598,6 +642,11 @@ const toggleFullscreen = async () => {
     }
 
     return key.length === 1 ? key.toUpperCase() : key;
+  };
+
+  const isEditableEventTarget = (target) => {
+    const tag = String(target?.tagName || "").toLowerCase();
+    return tag === "input" || tag === "textarea" || tag === "select" || !!target?.isContentEditable;
   };
 
   const XBOX_INPUT_LABELS = {
@@ -1062,14 +1111,15 @@ const toggleFullscreen = async () => {
       // if p1/p2 colors are set from char-select or match:start, use them; otherwise pick defaults
       const c1 = p1Color || "red";
       const c2 = p2Color || "blue";
+      const botMatch = !!onlineMatchRef.current?.bot;
       return {
         ...base,
         humans: [
           { slot: "p1", team: 1, color: c1, username: onlinePlayerNames.p1 },
-          { slot: "p2", team: 2, color: c2, username: onlinePlayerNames.p2 },
+          ...(botMatch ? [] : [{ slot: "p2", team: 2, color: c2, username: onlinePlayerNames.p2 }]),
         ],
-        ai: [],
-        difficulty: null,
+        ai: botMatch ? [{ slot: "ai1", team: 2, color: c2, dummy: false, aiDifficulty: onlineMatchRef.current?.botDifficulty || "medium" }] : [],
+        difficulty: onlineMatchRef.current?.botDifficulty || null,
         stage: stage || "default",
       };
     }
@@ -1583,6 +1633,27 @@ const toggleFullscreen = async () => {
       return;
     }
 
+    if (m === "online2v2") {
+      if (!user && !getAuthToken()) {
+        setMode("login");
+        setMenuStep("login");
+        return;
+      }
+      setMenuStep("online2v2");
+      return;
+    }
+
+    if (m === "friends") {
+      if (!user && !getAuthToken()) {
+        setMode("login");
+        setMenuStep("login");
+        return;
+      }
+      refreshFriends();
+      setMenuStep("friends");
+      return;
+    }
+
     if (m === "achievements") {
       refreshAchievements();
       setMenuStep("achievements");
@@ -1938,6 +2009,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         hitbox: { x: 0, y: 0, width: 0, height: 0 },
         hurtbox: { x: 0, y: 0, width: 40, height: 60 },
         aiTimer: 0,
+        aiDifficulty: opts.aiDifficulty || null,
         aiAction: "idle",
         aiActionTimer: 0,
         aiPressureTimer: 0,
@@ -1950,6 +2022,8 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         aiLevelPathTimer: 0,
         aiDropDir: 0,
         aiDropCommitTimer: 0,
+        aiClimbTargetKey: "",
+        aiClimbTargetX: 0,
       };
     };
 
@@ -1995,6 +2069,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
               y: groundLevel - 60,
               facing: -1,
               dummy: !!o.dummy,
+              aiDifficulty: o.aiDifficulty || gameConfig.difficulty || null,
               label: isHuman2 ? "P2" : gameConfig.practiceDummy ? "Dummy" : "AI",
               playerName: o.username,
             })
@@ -2155,6 +2230,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
     practiceRefreshRef.current = refreshPractice;
 
     const handleKeyDown = (e) => {
+      if (isEditableEventTarget(e.target)) return;
       if ((pausedRef.current && mode !== "online") || listeningForRef.current) return;
 
       const k = normalizeBindKey(e.key);
@@ -2167,6 +2243,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
     };
 
     const handleKeyUp = (e) => {
+      if (isEditableEventTarget(e.target)) return;
       const k = normalizeBindKey(e.key);
       if (!k) return;
 
@@ -2266,6 +2343,11 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           p.y = plat.y - p.height;
           p.vy = 0;
           p.grounded = true;
+          if (!p.isHuman && p.aiClimbTargetKey && p.aiClimbTargetKey === platformKey(plat)) {
+            p.aiClimbTargetKey = "";
+            p.aiClimbTargetX = 0;
+            p.aiLevelPathTimer = 0;
+          }
           return;
         }
       }
@@ -3520,6 +3602,83 @@ const getPlatformFighterIsOn = (p) => {
   });
 };
 
+const platformKey = (plat) => `${plat.x}:${plat.y}:${plat.width}`;
+const platformGap = (a, b) => {
+  if (!a || !b) return Infinity;
+  if (a.x + a.width < b.x) return b.x - (a.x + a.width);
+  if (b.x + b.width < a.x) return a.x - (b.x + b.width);
+  return 0;
+};
+
+const clampToPlatform = (plat, x, margin = 24) => {
+  const min = plat.x + margin;
+  const max = plat.x + plat.width - margin;
+  if (max <= min) return plat.x + plat.width / 2;
+  return Math.max(min, Math.min(max, x));
+};
+
+const getTargetPlatformForFighter = (p) => {
+  const standing = getPlatformFighterIsOn(p);
+  if (standing) return standing;
+
+  const feetY = p.y + p.height;
+  const fighterCenter = centerX(p);
+  return platforms
+    .filter((plat) => feetY <= plat.y + 10 && fighterCenter >= plat.x - 45 && fighterCenter <= plat.x + plat.width + 45)
+    .sort((a, b) => Math.abs(feetY - a.y) - Math.abs(feetY - b.y))[0] || null;
+};
+
+const canTravelPlatform = (from, to) => {
+  if (!from || !to || from === to) return false;
+  const vertical = from.y - to.y;
+  const gap = platformGap(from, to);
+  if (vertical > 8) return vertical <= 175 && gap <= 140;
+  if (vertical < -8) return true;
+  return gap <= 90;
+};
+
+const getPlatformRoute = (from, to) => {
+  if (!from || !to) return [];
+  if (from === to || platformKey(from) === platformKey(to)) return [from];
+
+  const queue = [[from]];
+  const visited = new Set([platformKey(from)]);
+
+  while (queue.length) {
+    const route = queue.shift();
+    const last = route[route.length - 1];
+    const nextPlatforms = platforms
+      .filter((plat) => !visited.has(platformKey(plat)) && canTravelPlatform(last, plat))
+      .sort((a, b) => {
+        const aGoal = Math.abs(a.y - to.y) + Math.abs((a.x + a.width / 2) - (to.x + to.width / 2)) * 0.35;
+        const bGoal = Math.abs(b.y - to.y) + Math.abs((b.x + b.width / 2) - (to.x + to.width / 2)) * 0.35;
+        return aGoal - bGoal;
+      });
+
+    for (const next of nextPlatforms) {
+      const nextRoute = [...route, next];
+      if (platformKey(next) === platformKey(to)) return nextRoute;
+      visited.add(platformKey(next));
+      queue.push(nextRoute);
+    }
+  }
+
+  return [];
+};
+
+const getPlatformLaunchX = (from, to, desiredX) => {
+  if (!from || !to) return desiredX;
+  const fromMin = from.x + 24;
+  const fromMax = from.x + from.width - 24;
+  const jumpMin = Math.max(fromMin, to.x - 45);
+  const jumpMax = Math.min(fromMax, to.x + to.width + 45);
+
+  if (jumpMax >= jumpMin) return Math.max(jumpMin, Math.min(jumpMax, desiredX));
+  if (to.x > from.x + from.width) return fromMax;
+  if (to.x + to.width < from.x) return fromMin;
+  return clampToPlatform(from, desiredX);
+};
+
 const tryJumpToPlatform = (ai, opp) => {
   if (ai.ducking || !ai.grounded || ai.jumpDisabled) return false;
 
@@ -3564,36 +3723,99 @@ const tryClimbTowardOpponent = (ai, opp) => {
 
   const aiFeet = ai.y + ai.height;
   const aiCenter = centerX(ai);
-  const reachablePlatforms = platforms
-    .filter((plat) => {
-      if (plat.width >= WORLD_W - 4) return false;
-      const platformAbove = plat.y < aiFeet - 25;
-      const reachableHeight = aiFeet - plat.y <= 170;
-      return platformAbove && reachableHeight;
-    })
-    .sort((a, b) => {
-      const aHorizontal = aiCenter < a.x ? a.x - aiCenter : aiCenter > a.x + a.width ? aiCenter - (a.x + a.width) : 0;
-      const bHorizontal = aiCenter < b.x ? b.x - aiCenter : aiCenter > b.x + b.width ? aiCenter - (b.x + b.width) : 0;
-      return aHorizontal - bHorizontal || b.y - a.y;
-    });
+  const currentPlatform = getPlatformFighterIsOn(ai);
+  const opponentPlatform = getTargetPlatformForFighter(opp);
+  if (!currentPlatform || !opponentPlatform || platformKey(currentPlatform) === platformKey(opponentPlatform)) return false;
 
-  const targetPlatform = reachablePlatforms[0];
+  const activeTarget = ai.aiClimbTargetKey
+    ? platforms.find((plat) => `${plat.x}:${plat.y}:${plat.width}` === ai.aiClimbTargetKey)
+    : null;
+
+  if (activeTarget && platformKey(activeTarget) === platformKey(currentPlatform)) {
+    ai.aiClimbTargetKey = "";
+    ai.aiClimbTargetX = 0;
+  } else if (activeTarget && activeTarget.y < aiFeet - 20 && aiFeet - activeTarget.y <= 175 && canTravelPlatform(currentPlatform, activeTarget)) {
+    const targetX = ai.aiClimbTargetX || getPlatformLaunchX(currentPlatform, activeTarget, centerX(opp));
+    const direction = targetX >= aiCenter ? 1 : -1;
+    const readyToJump = Math.abs(aiCenter - targetX) <= 16;
+    const airDirection = activeTarget.x + activeTarget.width / 2 >= aiCenter ? 1 : -1;
+
+    ai.facing = readyToJump ? airDirection : direction;
+    ai.vx = readyToJump ? airDirection * ai.speed : direction * ai.speed;
+    ai.blocking = false;
+    ai.ducking = false;
+    ai.attacking = false;
+
+    if (readyToJump) {
+      ai.vy = ai.jumpPower;
+      ai.grounded = false;
+    }
+
+    return true;
+  }
+
+  if (ai.aiClimbTargetKey) {
+    ai.aiClimbTargetKey = "";
+    ai.aiClimbTargetX = 0;
+  }
+
+  const route = getPlatformRoute(currentPlatform, opponentPlatform);
+  const targetPlatform = route[1];
   if (!targetPlatform) return false;
 
-  const targetX = Math.max(targetPlatform.x + 24, Math.min(targetPlatform.x + targetPlatform.width - 24, centerX(opp)));
-  const insideJumpWindow = aiCenter >= targetPlatform.x - 65 && aiCenter <= targetPlatform.x + targetPlatform.width + 65;
+  const targetX = getPlatformLaunchX(currentPlatform, targetPlatform, centerX(opp));
+  const readyToJump = Math.abs(aiCenter - targetX) <= 16;
+  const airDirection = targetPlatform.x + targetPlatform.width / 2 >= aiCenter ? 1 : -1;
 
-  ai.facing = targetX >= aiCenter ? 1 : -1;
-  ai.vx = ai.facing * ai.speed;
+  ai.aiClimbTargetKey = `${targetPlatform.x}:${targetPlatform.y}:${targetPlatform.width}`;
+  ai.aiClimbTargetX = targetX;
+  ai.facing = readyToJump ? airDirection : targetX >= aiCenter ? 1 : -1;
+  ai.vx = readyToJump ? airDirection * ai.speed : ai.facing * ai.speed;
   ai.blocking = false;
   ai.ducking = false;
   ai.attacking = false;
 
-  if (insideJumpWindow) {
+  if (readyToJump) {
     ai.vy = ai.jumpPower;
     ai.grounded = false;
   }
 
+  return true;
+};
+
+const continueClimbJump = (ai) => {
+  if (ai.grounded || !ai.aiClimbTargetKey) return false;
+
+  const targetPlatform = platforms.find((plat) => platformKey(plat) === ai.aiClimbTargetKey);
+  if (!targetPlatform) {
+    ai.aiClimbTargetKey = "";
+    ai.aiClimbTargetX = 0;
+    return false;
+  }
+
+  const aiCenter = centerX(ai);
+  const targetX = clampToPlatform(
+    targetPlatform,
+    ai.aiClimbTargetX || targetPlatform.x + targetPlatform.width / 2,
+    24
+  );
+  const insideLandingZone =
+    aiCenter >= targetPlatform.x + 12 &&
+    aiCenter <= targetPlatform.x + targetPlatform.width - 12;
+  const direction = insideLandingZone
+    ? 0
+    : targetX > aiCenter
+    ? 1
+    : -1;
+
+  if (direction !== 0) ai.facing = direction;
+  ai.vx = direction * ai.speed;
+  ai.blocking = false;
+  ai.ducking = false;
+  ai.attacking = false;
+  ai.attackTimer = 0;
+  ai.attackType = "";
+  ai.attackHeight = "";
   return true;
 };
 
@@ -3623,10 +3845,12 @@ const tryDropToOpponent = (ai, opp) => {
 
 const chaseOpponentLevel = (ai, opp) => {
   const verticalGap = centerY(opp) - centerY(ai);
-  if (Math.abs(verticalGap) < 55 && ai.aiDropCommitTimer <= 0) {
+  if (ai.grounded && Math.abs(verticalGap) < 55 && ai.aiDropCommitTimer <= 0) {
     ai.aiLevelPathTimer = 0;
     ai.aiDropCommitTimer = 0;
     ai.aiDropDir = 0;
+    ai.aiClimbTargetKey = "";
+    ai.aiClimbTargetX = 0;
     return false;
   }
 
@@ -3652,17 +3876,19 @@ const chaseOpponentLevel = (ai, opp) => {
     return true;
   }
 
+  if (continueClimbJump(ai)) {
+    ai.aiLevelPathTimer = 18;
+    return true;
+  }
+
   if (verticalGap > 55 && tryDropToOpponent(ai, opp)) {
     ai.aiLevelPathTimer = 24;
+    ai.aiClimbTargetKey = "";
+    ai.aiClimbTargetX = 0;
     return true;
   }
 
   if (verticalGap < -55) {
-    if (tryJumpToPlatform(ai, opp)) {
-      ai.aiLevelPathTimer = 18;
-      return true;
-    }
-
     if (tryClimbTowardOpponent(ai, opp)) {
       ai.aiLevelPathTimer = 18;
       return true;
@@ -3678,7 +3904,13 @@ const chaseOpponentLevel = (ai, opp) => {
   if (ai.aiLevelPathTimer > 0) {
     ai.aiLevelPathTimer--;
     if (Math.abs(verticalGap) > 55) {
-      const direction = ai.aiDropDir || (centerX(opp) > centerX(ai) ? 1 : -1);
+      const activeClimbTarget = ai.aiClimbTargetKey
+        ? platforms.find((plat) => platformKey(plat) === ai.aiClimbTargetKey)
+        : null;
+      const targetX = activeClimbTarget
+        ? clampToPlatform(activeClimbTarget, ai.aiClimbTargetX || activeClimbTarget.x + activeClimbTarget.width / 2)
+        : centerX(opp);
+      const direction = ai.aiDropDir || (targetX > centerX(ai) ? 1 : -1);
       ai.facing = direction;
       ai.vx = direction * ai.speed;
     }
@@ -6492,6 +6724,19 @@ useEffect(() => {
     const matchId = charSelect.matchId || (matched && matched.matchId) || (onlineMatchRef.current && onlineMatchRef.current.matchId);
     const lockedSecretColor = charSelect.lockedSecretColor || getLockedSecretColor(user?.username);
     const lockedSecretName = lockedSecretColor === "monochrome" ? "Monochrome" : lockedSecretColor === "transparent" ? "Transparent" : "Rainbow";
+    const stageChoices = [
+      { key: "default", name: "Classic" },
+      { key: "recursion", name: "Recursion" },
+      { key: "sky", name: "Sky" },
+      { key: "hourglass", name: "Hourglass" },
+      { key: "bottom", name: "Bottom" },
+    ];
+    const sendMapVote = (stageKey) => {
+      if (!socketRef.current || !matchId) return;
+      playSfx("menu_select");
+      setCharSelect((prev) => prev ? { ...prev, map: stageKey } : prev);
+      socketRef.current.emit('map:selected', { matchId, stage: stageKey });
+    };
     return (
       <div className="fixed inset-0 bg-black/10 backdrop-blur-[2px] z-50 flex items-center justify-center">
         <div className="bg-white/95 rounded-2xl p-6 max-w-4xl w-full mx-4 shadow-2xl">
@@ -6528,7 +6773,28 @@ useEffect(() => {
             })}
           </div>
           )}
-          <div className="mt-4 text-sm text-gray-600">Opponent: {matched?.opponent?.username} {charSelect.opponent ? `(selected: ${charSelect.opponent})` : ''}</div>
+          <div className="mt-5">
+            <div className="text-sm text-gray-600 mb-2">Map Vote — required</div>
+            <div className="grid grid-cols-5 gap-2">
+              {stageChoices.map((stageChoice) => (
+                <button
+                  key={stageChoice.key}
+                  onClick={() => sendMapVote(stageChoice.key)}
+                  className={`rounded-xl border px-3 py-3 text-sm transition ${
+                    charSelect.map === stageChoice.key
+                      ? "bg-gray-900 text-white border-gray-900"
+                      : "bg-white text-gray-800 border-gray-200 hover:bg-gray-50"
+                  }`}
+                >
+                  {stageChoice.name}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-4 text-sm text-gray-600">
+            Opponent: {matched?.opponent?.username} {charSelect.opponent ? `(selected: ${charSelect.opponent})` : ''}
+            {charSelect.opponentMap ? " • map voted" : ""}
+          </div>
         </div>
       </div>
     );
@@ -6936,6 +7202,80 @@ useEffect(() => {
     </div>
   );
 
+  const PasswordResetPanel = () => {
+    const [currentPassword, setCurrentPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [message, setMessage] = useState("");
+    const [saving, setSaving] = useState(false);
+
+    const submit = (event) => {
+      event.preventDefault();
+      playSfx("menu_select");
+      const authToken = getAuthToken();
+      if (!authToken || saving) return;
+      if (!currentPassword || !newPassword || !confirmPassword) {
+        setMessage("Fill out all password fields.");
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setMessage("New passwords do not match.");
+        return;
+      }
+
+      setSaving(true);
+      setMessage("");
+      api.resetPassword(authToken, currentPassword, newPassword).then(() => {
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setPasswordResetOpen(false);
+        goHome();
+      }).catch((err) => {
+        setMessage(err?.error || `Could not reset password${err?.status ? ` (${err.status})` : ""}.`);
+      }).finally(() => setSaving(false));
+    };
+
+    return (
+      <form onSubmit={submit} className="mx-auto mt-5 max-w-md text-left border border-gray-200 rounded-2xl p-5 space-y-3">
+        <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Current password" autoComplete="current-password" className="w-full rounded-xl border border-gray-200 px-4 py-3 text-gray-900" />
+        <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password" autoComplete="new-password" className="w-full rounded-xl border border-gray-200 px-4 py-3 text-gray-900" />
+        <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" autoComplete="new-password" className="w-full rounded-xl border border-gray-200 px-4 py-3 text-gray-900" />
+        {message && <div className="text-sm text-red-600">{message}</div>}
+        <button type="submit" disabled={saving} className="w-full bg-green-600 text-white rounded-2xl px-6 py-3 disabled:opacity-60">{saving ? "Updating..." : "Update Password"}</button>
+      </form>
+    );
+  };
+
+  const FriendAddForm = () => {
+    const [username, setUsername] = useState("");
+    const [sending, setSending] = useState(false);
+
+    const submit = (event) => {
+      event.preventDefault();
+      playSfx("menu_select");
+      const authToken = getAuthToken();
+      const cleanUsername = username.trim();
+      if (!authToken || !cleanUsername || sending) return;
+
+      setSending(true);
+      api.sendFriendRequest(authToken, cleanUsername).then((data) => {
+        setUsername("");
+        setFriendsMessage(`Friend request sent to ${data?.username || "player"}.`);
+        refreshFriends();
+      }).catch((err) => {
+        setFriendsMessage(err?.error || "Could not send friend request.");
+      }).finally(() => setSending(false));
+    };
+
+    return (
+      <form onSubmit={submit} className="flex gap-2">
+        <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" autoComplete="off" className="min-w-0 flex-1 rounded-xl border border-gray-200 px-4 py-3 text-gray-900" />
+        <button type="submit" disabled={sending} className="rounded-xl bg-gray-900 text-white px-4 py-3 disabled:opacity-60">{sending ? "Sending" : "Send"}</button>
+      </form>
+    );
+  };
+
   const ColorCard = ({ color, selected, onClick, note, locked = false, lockText = "" }) => {
     const glow =
       color === "red"
@@ -7123,6 +7463,95 @@ useEffect(() => {
     return <AchievementScreen />;
   }
 
+  if (mode === "friends" && menuStep === "friends") {
+    return (
+      <Layout>
+        <div className="bg-white rounded-3xl p-8 max-w-6xl w-full border border-black/5 text-gray-900" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
+          <div className="flex items-start justify-between gap-4 mb-8">
+            <div>
+              <h1 className="text-5xl font-light">Friends List</h1>
+              <p className="text-gray-500 mt-2">Signed in as <strong>{user?.username}</strong></p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => { playSfx("menu_select"); refreshFriends(); }} className="rounded-2xl px-5 py-3 bg-gray-900 text-white">Refresh</button>
+              <button onClick={goHome} className="rounded-2xl px-5 py-3 bg-gray-200 text-gray-900">Return Home</button>
+            </div>
+          </div>
+
+          {friendsMessage && <div className="mb-5 rounded-2xl bg-gray-100 px-5 py-3 text-sm text-gray-700">{friendsMessage}</div>}
+          {friendsLoading && <div className="mb-5 text-sm text-gray-500">Loading friends...</div>}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            <section className="rounded-3xl border border-gray-100 p-5">
+              <h2 className="text-2xl font-light mb-4">Inbox</h2>
+              {friendsData.incoming.length === 0 ? (
+                <p className="text-sm text-gray-500">No friend requests.</p>
+              ) : friendsData.incoming.map((request) => (
+                <div key={request.id} className="flex items-center justify-between gap-3 border-t border-gray-100 py-3">
+                  <span>{request.username}</span>
+                  <div className="flex gap-2">
+                    <button onClick={() => respondToFriendRequest(request.id, "accept")} className="rounded-xl bg-green-600 text-white px-3 py-2 text-sm">Accept</button>
+                    <button onClick={() => respondToFriendRequest(request.id, "decline")} className="rounded-xl bg-red-600 text-white px-3 py-2 text-sm">Decline</button>
+                  </div>
+                </div>
+              ))}
+            </section>
+
+            <section className="rounded-3xl border border-gray-100 p-5">
+              <h2 className="text-2xl font-light mb-4">Add</h2>
+              <FriendAddForm />
+              {friendsData.outgoing.length > 0 && (
+                <div className="mt-4 text-sm text-gray-500">Pending: {friendsData.outgoing.map((request) => request.username).join(", ")}</div>
+              )}
+            </section>
+
+            <section className="rounded-3xl border border-gray-100 p-5">
+              <h2 className="text-2xl font-light mb-4">Friends</h2>
+              {friendsData.friends.length === 0 ? (
+                <p className="text-sm text-gray-500">No friends added yet.</p>
+              ) : friendsData.friends.map((friend) => (
+                <div key={friend.id} className="border-t border-gray-100 py-3">
+                  <div className="font-medium">{friend.username}</div>
+                  <div className="text-xs text-gray-500 mb-2">{friend.wins || 0}W - {friend.losses || 0}L</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => { playSfx("menu_select"); setFriendsMessage(`Private 1v1 request prepared for ${friend.username}.`); }} className="rounded-xl bg-blue-600 text-white px-3 py-2 text-sm">Private 1v1</button>
+                    <button onClick={() => { playSfx("menu_select"); setFriendsMessage(`Private 2v2 request prepared for ${friend.username}. Invite two more friends next.`); }} className="rounded-xl bg-purple-600 text-white px-3 py-2 text-sm">Private 2v2</button>
+                  </div>
+                </div>
+              ))}
+            </section>
+
+            {[
+              ["Private 1v1 Request", friendsData.private1v1Requests],
+              ["Private 2v2 Request", friendsData.private2v2Requests],
+              ["2v2 Online Request", friendsData.online2v2Requests],
+            ].map(([title, requests]) => (
+              <section key={title} className="rounded-3xl border border-gray-100 p-5">
+                <h2 className="text-2xl font-light mb-4">{title}</h2>
+                {requests.length === 0 ? <p className="text-sm text-gray-500">No active requests.</p> : requests.map((request) => <div key={request.id}>{request.username}</div>)}
+              </section>
+            ))}
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (mode === "online2v2" && menuStep === "online2v2") {
+    return (
+      <Layout>
+        <div className="bg-white rounded-3xl p-10 text-center max-w-3xl w-full border border-black/5 text-gray-900" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
+          <h1 className="text-5xl font-light mb-4">2v2 Online</h1>
+          <p className="text-gray-500 mb-6">Invite a friend from the Friends List, then queue together as a team.</p>
+          <div className="flex justify-center gap-3 flex-wrap">
+            <button onClick={() => startModeFlow("friends")} className="bg-gray-900 text-white rounded-2xl px-6 py-3">Open Friends List</button>
+            <button onClick={goHome} className="bg-gray-200 text-gray-900 rounded-2xl px-6 py-3">Return Home</button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
   if (mode === "home") {
     return (
       <Layout>
@@ -7139,6 +7568,8 @@ useEffect(() => {
               { key: "ladder", title: "Ladder", desc: "Face all the colors" },
               { key: "offline", title: "1v1 Offline", desc: "Local PvP (P1 vs P2)" },
               { key: "online", title: "1v1 Online", desc: "Play against real players online" },
+              { key: "online2v2", title: "2v2 Online", desc: "Invite a friend and queue as a team" },
+              { key: "friends", title: "Friends List", desc: "Requests, friends, and private invites" },
               { key: "achievements", title: "Achievements", desc: "Collect them all" },
             ].map((m) => {
               const disabled = false;
@@ -7174,9 +7605,11 @@ useEffect(() => {
               <p className="text-lg font-light text-gray-600">Signed in as <strong>{user.username}</strong></p>
               <div className="flex justify-center gap-3 flex-wrap">
                 <button onClick={() => startModeFlow("online")} className="bg-green-600 text-white rounded-2xl px-6 py-3">Play Online</button>
-                <button onClick={() => { localStorage.removeItem('rgb_token'); setToken(null); setUser(null); setAchievements([]); setUserRank(null); }} className="bg-red-600 text-white rounded-2xl px-6 py-3">Logout</button>
+                <button onClick={() => { playSfx("menu_back"); localStorage.removeItem('rgb_token'); setToken(null); setUser(null); setAchievements([]); setUserRank(null); }} className="bg-red-600 text-white rounded-2xl px-6 py-3">Logout</button>
+                <button onClick={() => { playSfx("menu_select"); setPasswordResetOpen((open) => !open); }} className="bg-gray-900 text-white rounded-2xl px-6 py-3">Password Reset</button>
                 <button onClick={goHome} className="bg-gray-200 text-gray-900 rounded-2xl px-6 py-3">Return Home</button>
               </div>
+              {passwordResetOpen && <PasswordResetPanel />}
             </div>
           ) : (
             <div className="space-y-6">
@@ -7273,7 +7706,15 @@ useEffect(() => {
                           return { ...(prev || {}), matchId: d.matchId, side: d.side || prev?.side };
                         });
                       }
-                      setCharSelect({ timeLeft: d.timeLimit || 20000, matchId: nextMatchId, me: lockedSecretColor, opponent: null, lockedSecretColor });
+                      setCharSelect({
+                        timeLeft: d.timeLimit || 20000,
+                        matchId: nextMatchId,
+                        me: lockedSecretColor,
+                        opponent: null,
+                        map: null,
+                        opponentMap: false,
+                        lockedSecretColor,
+                      });
                       if (lockedSecretColor && nextMatchId) {
                         try {
                           const side = matched?.side || onlineMatchRef.current?.side || "left";
@@ -7296,6 +7737,10 @@ useEffect(() => {
                       } else {
                         setP1Color((prev) => c || prev);
                       }
+                    });
+
+                    s.on('opponent:mapSelected', () => {
+                      setCharSelect((prev) => prev ? { ...prev, opponentMap: true } : prev);
                     });
 
     s.on('char:forfeit', () => {
@@ -7348,6 +7793,8 @@ useEffect(() => {
                         matchId: d.matchId || (matched && matched.matchId),
                         side: d.side,
                         host: isHost,
+                        bot: !!d.bot,
+                        botDifficulty: d.botDifficulty || null,
                         p1UserId: d.p1UserId,
                         p2UserId: d.p2UserId,
                         p1Username: d.p1Username,

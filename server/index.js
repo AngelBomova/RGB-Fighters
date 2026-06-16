@@ -7,11 +7,12 @@ import pool, { initializeDatabase } from './db.js';
 import authRoutes from './routes/auth.js';
 import leaderboardRoutes from './routes/leaderboard.js';
 import achievementsRoutes, { unlockAchievement } from './routes/achievements.js';
+import friendsRoutes from './routes/friends.js';
 import { verifyToken, verifySocketToken } from './middleware/auth.js';
 
 const app = express();
 const httpServer = createServer(app);
-const SERVER_VERSION = 'online-results-v4';
+const SERVER_VERSION = 'friends-reset-ai-path-v1';
 const configuredFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 const allowSocketOrigin = (origin, callback) => {
   const allowed =
@@ -38,6 +39,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/achievements', achievementsRoutes);
+app.use('/api/friends', friendsRoutes);
 
 app.post('/api/match/leave', async (req, res) => {
   try {
@@ -128,7 +130,29 @@ const activeMatches = new Map();
 const socketUserMap = new Map();
 const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS || 10000);
 const STAGES = ['default', 'recursion', 'sky', 'hourglass', 'bottom'];
+const BOT_NAMES = ['PixelRival', 'NeonByte', 'StageGhost', 'ComboBot', 'RGBCPU', 'LaglessLegend', 'PrismAI', 'OrbitBot'];
+const BOT_CHARACTERS = ['red', 'blue', 'green', 'black', 'white', 'purple', 'yellow', 'orange', 'gray', 'brown', 'pink'];
+const BOT_DIFFICULTIES = ['easy', 'medium', 'hard'];
 const randomStage = () => STAGES[Math.floor(Math.random() * STAGES.length)];
+const randomChoice = (items) => items[Math.floor(Math.random() * items.length)];
+const isBotPlayer = (player) => !!player?.bot;
+const socketIdsForMatch = (match) => [match?.p1?.socketId, match?.p2?.socketId].filter(Boolean);
+
+function resolveMapVote(votes) {
+  const counts = new Map();
+  votes.filter((stage) => STAGES.includes(stage)).forEach((stage) => counts.set(stage, (counts.get(stage) || 0) + 1));
+  if (!counts.size) return randomStage();
+  const maxVotes = Math.max(...counts.values());
+  const tied = [...counts.entries()].filter(([, count]) => count === maxVotes).map(([stage]) => stage);
+  return randomChoice(tied);
+}
+
+function emitToMatch(match, event, payloadFactory) {
+  socketIdsForMatch(match).forEach((socketId) => {
+    const payload = typeof payloadFactory === 'function' ? payloadFactory(socketId) : payloadFactory;
+    io.to(socketId).emit(event, payload);
+  });
+}
 
 async function forfeitMatch(matchId, leavingSocketId) {
   const match = activeMatches.get(matchId);
@@ -146,8 +170,7 @@ async function forfeitMatch(matchId, leavingSocketId) {
     return false;
   }
 
-  io.to(match.p1.socketId).emit('match:ended', { winner: winner.userId });
-  io.to(match.p2.socketId).emit('match:ended', { winner: winner.userId });
+  emitToMatch(match, 'match:ended', { winner: winner.userId || null });
   return true;
 }
 
@@ -163,14 +186,14 @@ async function recordMatchResultFromState(matchId, state) {
   const winnerId = state.matchWinnerText === 'Team 1'
     ? match.p1.userId
     : state.matchWinnerText === 'Team 2'
-      ? match.p2.userId
+      ? match.p2.userId || null
       : null;
 
-  await processMatchResult(matchId, p1Rounds, p2Rounds, winnerId);
+  await processMatchResult(matchId, p1Rounds, p2Rounds, winnerId, state.matchWinnerText);
   return true;
 }
 
-async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId) {
+async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId, winnerTeamText = '') {
   const match = activeMatches.get(matchId);
   if (!match) return false;
   if (match.resultRecorded) return true;
@@ -179,8 +202,38 @@ async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId) {
   try {
     let eloChange = 0;
     let isP1Winner = false;
+    const p1IsBot = isBotPlayer(match.p1);
+    const p2IsBot = isBotPlayer(match.p2);
+    const p1Won = winnerTeamText === 'Team 1' || (!!winnerId && String(winnerId) === String(match.p1.userId));
+    const p2Won = winnerTeamText === 'Team 2' || (!!winnerId && String(winnerId) === String(match.p2.userId));
 
-    if (!winnerId) {
+    if (p1IsBot || p2IsBot) {
+      isP1Winner = p1Won;
+      const human = p1IsBot ? match.p2 : match.p1;
+      const humanWon = p1IsBot ? p2Won : p1Won;
+      const bot = p1IsBot ? match.p1 : match.p2;
+
+      if (human?.userId) {
+        await pool.query(
+          `UPDATE users SET ${humanWon ? 'wins' : 'losses'} = ${humanWon ? 'wins' : 'losses'} + 1 WHERE id = $1`,
+          [human.userId]
+        );
+        await pool.query(
+          'INSERT INTO matches (player1_id, player2_id, winner_id, p1_rounds, p2_rounds, elo_change) VALUES ($1, $2, $3, $4, $5, $6)',
+          [
+            p1IsBot ? null : match.p1.userId,
+            p2IsBot ? null : match.p2.userId,
+            humanWon ? human.userId : null,
+            p1Rounds,
+            p2Rounds,
+            0,
+          ]
+        );
+        if (humanWon && String(bot?.character || '').toLowerCase() === 'rainbow') {
+          await unlockAchievement(human.userId, 'online:rainbow');
+        }
+      }
+    } else if (!winnerId) {
       await pool.query(
         'UPDATE users SET losses = losses + 1 WHERE id = $1',
         [match.p1.userId]
@@ -230,26 +283,30 @@ async function processMatchResult(matchId, p1Rounds, p2Rounds, winnerId) {
       }
     }
 
-    const p1Data = await pool.query('SELECT elo, wins, losses FROM users WHERE id = $1', [match.p1.userId]);
-    const p2Data = await pool.query('SELECT elo, wins, losses FROM users WHERE id = $1', [match.p2.userId]);
-    const p1Record = p1Data.rows?.[0] || {};
-    const p2Record = p2Data.rows?.[0] || {};
+    const p1Data = match.p1.userId ? await pool.query('SELECT elo, wins, losses FROM users WHERE id = $1', [match.p1.userId]) : { rows: [] };
+    const p2Data = match.p2.userId ? await pool.query('SELECT elo, wins, losses FROM users WHERE id = $1', [match.p2.userId]) : { rows: [] };
+    const p1Record = p1Data.rows?.[0] || { elo: 0, wins: 0, losses: 0 };
+    const p2Record = p2Data.rows?.[0] || { elo: 0, wins: 0, losses: 0 };
 
-    io.to(match.p1.socketId).emit('match:result', {
-      winner: winnerId ? isP1Winner : null,
-      newElo: p1Record.elo,
-      wins: p1Record.wins,
-      losses: p1Record.losses,
-      eloChange: winnerId ? (isP1Winner ? eloChange : -eloChange) : 0,
-    });
+    if (match.p1.socketId) {
+      io.to(match.p1.socketId).emit('match:result', {
+        winner: p1Won,
+        newElo: p1Record.elo,
+        wins: p1Record.wins,
+        losses: p1Record.losses,
+        eloChange: winnerId ? (isP1Winner ? eloChange : -eloChange) : 0,
+      });
+    }
 
-    io.to(match.p2.socketId).emit('match:result', {
-      winner: winnerId ? !isP1Winner : null,
-      newElo: p2Record.elo,
-      wins: p2Record.wins,
-      losses: p2Record.losses,
-      eloChange: winnerId ? (isP1Winner ? -eloChange : eloChange) : 0,
-    });
+    if (match.p2.socketId) {
+      io.to(match.p2.socketId).emit('match:result', {
+        winner: p2Won,
+        newElo: p2Record.elo,
+        wins: p2Record.wins,
+        losses: p2Record.losses,
+        eloChange: winnerId ? (isP1Winner ? -eloChange : eloChange) : 0,
+      });
+    }
 
     console.log('Match result recorded:', {
       matchId,
@@ -293,104 +350,186 @@ io.on('connection', (socket) => {
 
   console.log(`Player connected: ${socket.id} (${socket.username})`);
 
+  const getOpponentStats = async (oppId, fallbackUsername = 'Player') => {
+    if (!oppId) return { username: fallbackUsername, wins: 0, losses: 0 };
+    const result = await pool.query(
+      'SELECT username, wins, losses FROM users WHERE id = $1',
+      [oppId]
+    );
+    return result.rows[0] || { username: fallbackUsername, wins: 0, losses: 0 };
+  };
+
+  const startSelectTimer = (matchId) => {
+    const match = activeMatches.get(matchId);
+    if (!match) return;
+
+    emitToMatch(match, 'char:selectStart', (socketId) => ({
+      timeLimit: 20000,
+      matchId,
+      side: socketId === match.p1.socketId ? 'left' : 'right',
+      requireMap: true,
+      stages: STAGES,
+    }));
+
+    setTimeout(async () => {
+      const current = activeMatches.get(matchId);
+      if (!current || current.started) return;
+
+      const p1Ready = !!current.p1Ready && !!current.p1Map;
+      const p2Ready = !!current.p2Ready && !!current.p2Map;
+      if (p1Ready && p2Ready) return;
+
+      if (current.private) {
+        emitToMatch(current, 'char:forfeit', { reason: 'private-timeout' });
+        activeMatches.delete(matchId);
+        return;
+      }
+
+      if (!p1Ready && !p2Ready) {
+        await processMatchResult(matchId, 0, 0, null).catch((e) => console.error('both timeout result err', e));
+        emitToMatch(current, 'char:forfeit', { reason: 'both' });
+        activeMatches.delete(matchId);
+        return;
+      }
+
+      const winner = p1Ready ? current.p1 : current.p2;
+      const p1Rounds = winner === current.p1 ? 2 : 0;
+      const p2Rounds = winner === current.p2 ? 2 : 0;
+      await processMatchResult(matchId, p1Rounds, p2Rounds, winner.userId || null, winner === current.p1 ? 'Team 1' : 'Team 2')
+        .catch((e) => console.error('forfeit result err', e));
+      emitToMatch(current, 'char:forfeit', { reason: 'no-character-or-map', winner: winner.userId || null });
+      activeMatches.delete(matchId);
+    }, 20000);
+  };
+
+  const maybeStartMatch = (matchId) => {
+    const match = activeMatches.get(matchId);
+    if (!match || match.started) return;
+    if (!match.p1Ready || !match.p2Ready || !match.p1Map || !match.p2Map) return;
+
+    match.stage = resolveMapVote([match.p1Map, match.p2Map]);
+    match.started = true;
+
+    const common = {
+      matchId,
+      p1Char: match.p1Char,
+      p2Char: match.p2Char,
+      p1UserId: match.p1.userId || null,
+      p2UserId: match.p2.userId || null,
+      p1Username: match.p1.username,
+      p2Username: match.p2.username,
+      stage: match.stage,
+      bot: !!match.bot,
+      botDifficulty: match.botDifficulty || null,
+    };
+
+    if (match.p1.socketId) {
+      io.to(match.p1.socketId).emit('match:start', {
+        ...common,
+        side: 'left',
+        host: true,
+      });
+    }
+    if (match.p2.socketId) {
+      io.to(match.p2.socketId).emit('match:start', {
+        ...common,
+        side: 'right',
+        host: false,
+      });
+    }
+  };
+
+  const createOnline1v1Match = async (p1, p2, { bot = false } = {}) => {
+    const matchId = `${p1.socketId || 'bot'}_${p2.socketId || 'bot'}_${Date.now()}`;
+    const hostSocketId = p1.socketId || p2.socketId;
+
+    activeMatches.set(matchId, {
+      matchId,
+      mode: '1v1',
+      p1,
+      p2,
+      bot,
+      botDifficulty: p2.bot ? p2.difficulty : p1.bot ? p1.difficulty : null,
+      hostSocketId,
+      p1Ready: !!p1.bot,
+      p2Ready: !!p2.bot,
+      p1Char: p1.bot ? p1.character : null,
+      p2Char: p2.bot ? p2.character : null,
+      p1Map: p1.bot ? p1.stage : null,
+      p2Map: p2.bot ? p2.stage : null,
+      stage: null,
+      startTime: Date.now(),
+      started: false,
+    });
+
+    const match = activeMatches.get(matchId);
+    const p1Stats = await getOpponentStats(p1.userId, p1.username);
+    const p2Stats = await getOpponentStats(p2.userId, p2.username);
+
+    if (p1.socketId) {
+      io.to(p1.socketId).emit('queue:matched', {
+        matchId,
+        opponent: { username: p2.username, wins: p2Stats.wins, losses: p2Stats.losses, bot: !!p2.bot },
+        side: 'left',
+        bot: !!p2.bot,
+      });
+    }
+    if (p2.socketId) {
+      io.to(p2.socketId).emit('queue:matched', {
+        matchId,
+        opponent: { username: p1.username, wins: p1Stats.wins, losses: p1Stats.losses, bot: !!p1.bot },
+        side: 'right',
+        bot: !!p1.bot,
+      });
+    }
+
+    setTimeout(() => {
+      const current = activeMatches.get(matchId);
+      if (!current) return;
+      startSelectTimer(matchId);
+      maybeStartMatch(matchId);
+    }, 600);
+
+    return match;
+  };
+
+  const createBotOpponent = () => ({
+    socketId: null,
+    userId: null,
+    username: randomChoice(BOT_NAMES),
+    bot: true,
+    character: randomChoice(BOT_CHARACTERS),
+    difficulty: randomChoice(BOT_DIFFICULTIES),
+    stage: randomStage(),
+  });
+
   socket.on('queue:join', async (data) => {
-    const { side } = data || {};
+    const { side, mode = '1v1' } = data || {};
     const userId = socket.userId;
     const username = socket.username;
-    socketUserMap.set(socket.id, { userId, username, side });
+    socketUserMap.set(socket.id, { userId, username, side, mode });
 
-    console.log(`${username} (${socket.id}) joined queue, side: ${side}`);
+    console.log(`${username} (${socket.id}) joined queue, side: ${side}, mode: ${mode}`);
 
-    if (matchmakingQueue.length > 0) {
-      const opponent = matchmakingQueue.shift();
-      const matchId = `${opponent.socketId}_${socket.id}`;
+    if (mode !== '1v1') {
+      socket.emit('match:error', { error: '2v2 matchmaking is being upgraded. Use 1v1 while the 2v2 socket pass finishes.' });
+      return;
+    }
 
-      const p1 = opponent;
-      const p2 = { socketId: socket.id, userId, username, side };
-      const hostSocketId = p1.socketId;
-      const stage = randomStage();
-
-      activeMatches.set(matchId, {
-        matchId,
-        p1,
-        p2,
-        hostSocketId,
-        p1Ready: false,
-        p2Ready: false,
-        p1Char: null,
-        p2Char: null,
-        stage,
-        startTime: Date.now(),
-      });
-
-      const getOpponentStats = async (oppId) => {
-        const result = await pool.query(
-          'SELECT username, wins, losses FROM users WHERE id = $1',
-          [oppId]
-        );
-        return result.rows[0] || { username: 'Player', wins: 0, losses: 0 };
-      };
-
-      const oppStats1 = await getOpponentStats(p2.userId);
-      const oppStats2 = await getOpponentStats(p1.userId);
-
-      io.to(opponent.socketId).emit('queue:matched', {
-        matchId,
-        opponent: {
-          username: p2.username,
-          wins: oppStats1.wins,
-          losses: oppStats1.losses,
-        },
-        side: 'left',
-      });
-
-      io.to(socket.id).emit('queue:matched', {
-        matchId,
-        opponent: {
-          username: p1.username,
-          wins: oppStats2.wins,
-          losses: oppStats2.losses,
-        },
-        side: 'right',
-      });
-
-      // send character select start with matchId
-      setTimeout(() => {
-        io.to(opponent.socketId).emit('char:selectStart', { timeLimit: 20000, matchId });
-        io.to(socket.id).emit('char:selectStart', { timeLimit: 20000, matchId });
-
-        // after timeLimit, evaluate forfeit
-        setTimeout(async () => {
-          const match = activeMatches.get(matchId);
-          if (!match) return;
-          // determine forfeit: if one player didn't ready
-          const p1Ready = !!match.p1Ready;
-          const p2Ready = !!match.p2Ready;
-          if (!p1Ready || !p2Ready) {
-            // if both not ready, cancel match
-            if (!p1Ready && !p2Ready) {
-              await processMatchResult(matchId, 0, 0, null).catch((e) => console.error('both timeout result err', e));
-              io.to(match.p1.socketId).emit('char:forfeit', { reason: 'both' });
-              io.to(match.p2.socketId).emit('char:forfeit', { reason: 'both' });
-              activeMatches.delete(matchId);
-              return;
-            }
-
-            // one player forfeits
-            const winner = p1Ready ? match.p1 : match.p2;
-            const p1Rounds = winner.userId === match.p1.userId ? 2 : 0;
-            const p2Rounds = winner.userId === match.p2.userId ? 2 : 0;
-
-            await processMatchResult(matchId, p1Rounds, p2Rounds, winner.userId).catch((e) => console.error('forfeit result err', e));
-
-            io.to(match.p1.socketId).emit('char:forfeit', { reason: 'no-character', winner: winner.userId });
-            io.to(match.p2.socketId).emit('char:forfeit', { reason: 'no-character', winner: winner.userId });
-            activeMatches.delete(matchId);
-          }
-        }, 20000);
-      }, 2000);
+    const queuePlayer = { socketId: socket.id, userId, username, side, mode };
+    const opponentIndex = matchmakingQueue.findIndex((player) => player.mode === mode && player.socketId !== socket.id);
+    if (opponentIndex !== -1) {
+      const opponent = matchmakingQueue.splice(opponentIndex, 1)[0];
+      if (opponent.botTimer) clearTimeout(opponent.botTimer);
+      await createOnline1v1Match(opponent, queuePlayer);
     } else {
-      matchmakingQueue.push({ socketId: socket.id, userId, username, side });
+      queuePlayer.botTimer = setTimeout(async () => {
+        const index = matchmakingQueue.findIndex((player) => player.socketId === socket.id);
+        if (index === -1) return;
+        const [waitingPlayer] = matchmakingQueue.splice(index, 1);
+        await createOnline1v1Match(waitingPlayer, createBotOpponent(), { bot: true }).catch((err) => console.error('bot match err', err));
+      }, 15000);
+      matchmakingQueue.push(queuePlayer);
     }
   });
 
@@ -414,39 +553,31 @@ io.on('connection', (socket) => {
     if (isP1) {
       match.p1Char = selectedCharacter;
       match.p1Ready = true;
-      io.to(match.p2.socketId).emit('opponent:charSelected', { character: selectedCharacter });
+      if (match.p2.socketId) io.to(match.p2.socketId).emit('opponent:charSelected', { character: selectedCharacter });
     } else {
       match.p2Char = selectedCharacter;
       match.p2Ready = true;
-      io.to(match.p1.socketId).emit('opponent:charSelected', { character: selectedCharacter });
+      if (match.p1.socketId) io.to(match.p1.socketId).emit('opponent:charSelected', { character: selectedCharacter });
     }
 
-    if (match.p1Ready && match.p2Ready) {
-      io.to(match.p1.socketId).emit('match:start', {
-        matchId,
-        p1Char: match.p1Char,
-        p2Char: match.p2Char,
-        p1UserId: match.p1.userId,
-        p2UserId: match.p2.userId,
-        p1Username: match.p1.username,
-        p2Username: match.p2.username,
-        side: 'left',
-        stage: match.stage,
-        host: match.hostSocketId === match.p1.socketId,
-      });
-      io.to(match.p2.socketId).emit('match:start', {
-        matchId,
-        p1Char: match.p1Char,
-        p2Char: match.p2Char,
-        p1UserId: match.p1.userId,
-        p2UserId: match.p2.userId,
-        p1Username: match.p1.username,
-        p2Username: match.p2.username,
-        side: 'right',
-        stage: match.stage,
-        host: match.hostSocketId === match.p2.socketId,
-      });
+    maybeStartMatch(matchId);
+  });
+
+  socket.on('map:selected', (data) => {
+    const { matchId, stage } = data || {};
+    const match = activeMatches.get(matchId);
+    if (!match || !STAGES.includes(stage)) return;
+    if (socket.id !== match.p1.socketId && socket.id !== match.p2.socketId) return;
+
+    if (socket.id === match.p1.socketId) {
+      match.p1Map = stage;
+      if (match.p2.socketId) io.to(match.p2.socketId).emit('opponent:mapSelected', { stage });
+    } else {
+      match.p2Map = stage;
+      if (match.p1.socketId) io.to(match.p1.socketId).emit('opponent:mapSelected', { stage });
     }
+
+    maybeStartMatch(matchId);
   });
 
   socket.on('input:send', (data) => {
@@ -460,9 +591,9 @@ io.on('connection', (socket) => {
     // relay inputs to opponent
     const isP1 = socket.id === match.p1.socketId;
     if (isP1) {
-      io.to(match.p2.socketId).emit('input:opponent', { matchId, inputs });
+      if (match.p2.socketId) io.to(match.p2.socketId).emit('input:opponent', { matchId, inputs });
     } else {
-      io.to(match.p1.socketId).emit('input:opponent', { matchId, inputs });
+      if (match.p1.socketId) io.to(match.p1.socketId).emit('input:opponent', { matchId, inputs });
     }
   });
 
@@ -473,15 +604,16 @@ io.on('connection', (socket) => {
     const isAuthority = socket.id === match.hostSocketId || socket.id === match.p1.socketId;
     if (!isAuthority) return;
     match.latestState = state;
-    io.to(match.p1.socketId).emit('state:sync', { matchId, state });
-    io.to(match.p2.socketId).emit('state:sync', { matchId, state });
+    if (match.p1.socketId) io.to(match.p1.socketId).emit('state:sync', { matchId, state });
+    if (match.p2.socketId) io.to(match.p2.socketId).emit('state:sync', { matchId, state });
     recordMatchResultFromState(matchId, state).catch((err) => console.error('socket state result record err', err));
   });
 
   socket.on('queue:cancel', () => {
     const idx = matchmakingQueue.findIndex((p) => p.socketId === socket.id);
     if (idx !== -1) {
-      matchmakingQueue.splice(idx, 1);
+      const [queued] = matchmakingQueue.splice(idx, 1);
+      if (queued?.botTimer) clearTimeout(queued.botTimer);
       socket.emit('queue:cancelled');
     }
   });
@@ -508,7 +640,7 @@ io.on('connection', (socket) => {
     }
     const finalWinnerId = winnerId || (p1Rounds > p2Rounds ? match.p1.userId : p2Rounds > p1Rounds ? match.p2.userId : null);
     try {
-      await processMatchResult(matchId, p1Rounds, p2Rounds, finalWinnerId);
+      await processMatchResult(matchId, p1Rounds, p2Rounds, finalWinnerId, p1Rounds > p2Rounds ? 'Team 1' : p2Rounds > p1Rounds ? 'Team 2' : '');
       if (typeof ack === 'function') ack({ ok: true });
     } catch (err) {
       console.error('match:end process err', err);
@@ -520,7 +652,8 @@ io.on('connection', (socket) => {
     console.log(`Player disconnected: ${socket.id}`);
     const queueIndex = matchmakingQueue.findIndex((p) => p.socketId === socket.id);
     if (queueIndex !== -1) {
-      matchmakingQueue.splice(queueIndex, 1);
+      const [queued] = matchmakingQueue.splice(queueIndex, 1);
+      if (queued?.botTimer) clearTimeout(queued.botTimer);
     }
 
     for (const [matchId, match] of activeMatches.entries()) {

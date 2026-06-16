@@ -1,7 +1,7 @@
 import express from 'express';
 import bcryptjs from 'bcryptjs';
 import pool from '../db.js';
-import { signToken, verifyToken } from '../middleware/auth.js';
+import { signToken, verifyToken, verifySocketToken } from '../middleware/auth.js';
 import { isAllowedUsername, normalizeUsername, MAX_USERNAME_LENGTH } from '../usernameRules.js';
 import { ensureSpecialWins, withSpecialWins } from '../specialWins.js';
 
@@ -120,6 +120,48 @@ router.get('/me', verifyToken, async (req, res) => {
     res.json(withSpecialWins(result.rows[0]));
   } catch (err) {
     console.error('Me error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/reset-password', async (req, res) => {
+  try {
+    const headerToken = req.headers.authorization?.split(' ')[1];
+    const bodyToken = req.body?.token;
+    let decoded;
+    try {
+      decoded = verifySocketToken(headerToken || bodyToken);
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired login. Please log in again.' });
+    }
+    const { currentPassword, newPassword } = req.body || {};
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Missing current or new password' });
+    }
+
+    const result = await pool.query(
+      'SELECT id, username, password_hash FROM users WHERE id = $1',
+      [decoded.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = result.rows[0];
+    const valid = await bcryptjs.compare(currentPassword, user.password_hash);
+
+    if (!valid) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    const hash = await bcryptjs.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, user.id]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Password reset error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

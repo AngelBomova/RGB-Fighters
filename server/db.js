@@ -135,6 +135,7 @@ async function initSqlite() {
           const u = data.users.find((x) => x.id === id);
           if (!u) return { rows: [] };
           if (s.includes('set username')) u.username = params[0];
+          if (s.includes('set password_hash')) u.password_hash = params[0];
           if (s.includes('wins = wins + 1')) u.wins = (u.wins || 0) + 1;
           if (s.includes('losses = losses + 1')) u.losses = (u.losses || 0) + 1;
           if (params && params.length) {
