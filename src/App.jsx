@@ -7714,8 +7714,8 @@ useEffect(() => {
               { key: "ladder", title: "Ladder", desc: "Face all the colors" },
               { key: "offline", title: "1v1 Offline", desc: "Local PvP (P1 vs P2)" },
               { key: "online", title: "1v1 Online", desc: "Play against real players online" },
-              { key: "online2v2", title: "2v2 Online", desc: "Invite a friend and queue as a team" },
-              { key: "friends", title: "Friends List", desc: "Requests, friends, and private invites" },
+              // { key: "online2v2", title: "2v2 Online", desc: "Invite a friend and queue as a team" },
+              // { key: "friends", title: "Friends List", desc: "Requests, friends, and private invites" },
               { key: "achievements", title: "Achievements", desc: "Collect them all" },
             ].map((m) => {
               const disabled = false;
