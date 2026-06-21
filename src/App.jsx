@@ -2507,7 +2507,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
       let freezeFrames = 0;
       let disableBlock = false;
       let disableSpecial = false;
-      let specialDisableFrames = 420;
+      let specialDisableFrames = 540;
       let slowFrames = 0;
       let applyPoisonTicks = 0;
       let applyJumpDisable = 0;
@@ -2648,7 +2648,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           applyPoisonTicks = 10;
           break;
         case "blackball":
-          damage = 4;
+          damage = 7;
           knockback = 3;
           launchUp = true;
           disableBlock = true;
@@ -6620,7 +6620,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   target.blockDisabled = true;
                   target.blockDisabledTimer = 600;
                   target.specialDisabled = true;
-                  target.specialDisabledTimer = 600;
+                  target.specialDisabledTimer = 540;
                 }
 
                 target.health -= actualDamage;
