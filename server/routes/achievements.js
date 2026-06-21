@@ -4,7 +4,7 @@ import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
 const COLORS = new Set(['red', 'blue', 'green', 'black', 'white', 'purple', 'yellow', 'orange', 'gray']);
-const DIFFICULTIES = new Set(['easy', 'medium', 'hard']);
+const DIFFICULTIES = new Set(['hard']);
 const OFFLINE_ACHIEVEMENTS = [...COLORS].flatMap((color) => [...DIFFICULTIES].map((difficulty) => `ladder:${color}:${difficulty}`));
 const SPECIAL_ACHIEVEMENTS = ['online:rainbow'];
 const FULL_ACHIEVEMENTS = [...OFFLINE_ACHIEVEMENTS, ...SPECIAL_ACHIEVEMENTS];

@@ -1103,16 +1103,16 @@ const toggleFullscreen = async () => {
   const isMonochromeUser = (name) => String(name || "") === "Monochrome";
   const isTransparentUser = (name) => String(name || "") === "Transparent";
   const getLockedSecretColor = (name) => isRainbowUser(name) ? "rainbow" : isMonochromeUser(name) ? "monochrome" : isTransparentUser(name) ? "transparent" : null;
-  const OFFLINE_ACHIEVEMENT_KEYS = FIGHTER_COLORS.flatMap((color) => ["easy", "medium", "hard"].map((difficulty) => `ladder:${color}:${difficulty}`));
+  const OFFLINE_ACHIEVEMENT_KEYS = FIGHTER_COLORS.map((color) => `ladder:${color}:hard`);
   const hasAchievementKey = (key) => achievements.includes(key);
   const hasAllOfflineAchievements = OFFLINE_ACHIEVEMENT_KEYS.every(hasAchievementKey);
   const hasBrownUnlocked = !!user && hasAllOfflineAchievements;
-  const hasPinkUnlocked = !!user && hasAllOfflineAchievements && (Number(user?.wins) || 0) >= 100 && hasAchievementKey("online:rainbow");
+  const hasPinkUnlocked = !!user && hasAllOfflineAchievements && (Number(user?.wins) || 0) >= 50;
   const canUseColor = (color) => color !== "brown" && color !== "pink" ? true : color === "brown" ? hasBrownUnlocked : hasPinkUnlocked;
   const lockTextForColor = (color) => color === "brown"
-    ? "Complete Every Offline Achievement To Unlock"
+    ? "Complete Every Ladder Achievement To Unlock"
     : color === "pink"
-    ? "Complete Every Achievement To Unlock"
+    ? "Complete Every Achievement Except Rainbow Slayer To Unlock"
     : "";
   const selectableColorsForCurrentMode = () => ONLINE_FIGHTER_COLORS;
   const formatWlrValue = (wins, losses, fallback) => {
@@ -1125,7 +1125,7 @@ const toggleFullscreen = async () => {
   useEffect(() => {
     if (mode !== "ladder" || !gameOver || matchWinnerText !== "Team 1" || ladderIndex !== LADDER_BOSS_INDEX) return;
     const authToken = token || (typeof localStorage !== "undefined" ? localStorage.getItem("rgb_token") : null);
-    if (!authToken || !p1Color || !difficulty) return;
+    if (!authToken || !p1Color || difficulty !== "hard") return;
 
     const achievementKey = `ladder:${p1Color}:${difficulty}`;
     if (ladderAchievementSentRef.current === achievementKey) return;
@@ -2723,6 +2723,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         defender.pinkParrying &&
         defender.pinkParryTimer > 0 &&
         !extra.isProjectile &&
+        attackType !== "grayhammer" &&
         (
           defender.pinkParryDucking
             ? ["unblockable", "low", "mid"].includes(attackHeight)
@@ -3076,7 +3077,7 @@ const beginPinkPlus = (fighter) => {
   playSfx("purple_damage");
   setManagedTimeout(() => {
     fighter.canProjectile = true;
-  }, 1000);
+  }, 2000);
   return true;
 };
 
@@ -3604,8 +3605,6 @@ const beginVoidCharge = (ai) => {
 const releaseVoidCharge = (ai) => {
   if (!ai.charging) return false;
 
-  const chargeDamage = 1 + Math.floor(ai.chargeFrames / 20);
-
   projectiles.current.push({
     x: ai.x + (ai.facing > 0 ? ai.width : 0),
     y: ai.y + 25,
@@ -3616,7 +3615,7 @@ const releaseVoidCharge = (ai) => {
     attackHeight: "mid",
     color: ai.color,
     radius: 8 + Math.min(ai.chargeFrames / 30, 8),
-    damage: chargeDamage,
+    damage: 5,
   });
   playSfx("chargeball");
 
@@ -5336,7 +5335,6 @@ if (hpW > 0) {
         }
 
         if (p.type === "void" && p.charging && !getHeld("special2")) {
-          const chargeDamage = 8 + Math.floor(p.chargeFrames / 15);
           projectiles.current.push({
             x: p.x + (p.facing > 0 ? p.width : 0),
             y: p.y + 25,
@@ -5347,7 +5345,7 @@ if (hpW > 0) {
             attackHeight: "mid",
             color: p.color,
             radius: 8 + Math.min(p.chargeFrames / 30, 8),
-            damage: chargeDamage,
+            damage: 5,
           });
           playSfx("chargeball");
           p.charging = false;
@@ -5360,7 +5358,6 @@ if (hpW > 0) {
       }
 
       if (p.type === "void" && p.charging && !getHeld("special2")) {
-        const chargeDamage = 8 + Math.floor(p.chargeFrames / 15);
         projectiles.current.push({
           x: p.x + (p.facing > 0 ? p.width : 0),
           y: p.y + 25,
@@ -5371,7 +5368,7 @@ if (hpW > 0) {
           attackHeight: "mid",
           color: p.color,
           radius: 8 + Math.min(p.chargeFrames / 30, 8),
-          damage: chargeDamage,
+          damage: 5,
         });
         playSfx("chargeball");
         p.charging = false;
@@ -6620,6 +6617,10 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   playSfx("block");
                 } else if (actualDamage > 0) {
                   playSfx("hit");
+                  target.blockDisabled = true;
+                  target.blockDisabledTimer = 600;
+                  target.specialDisabled = true;
+                  target.specialDisabledTimer = 600;
                 }
 
                 target.health -= actualDamage;
@@ -7552,11 +7553,9 @@ useEffect(() => {
                   <div key={color} className="rounded-3xl border border-gray-100 bg-gray-50 p-5 flex items-center justify-between gap-4">
                     <div>
                       <div className="text-lg text-gray-900 font-light capitalize">{color} Ladder</div>
-                      <div className="text-xs text-gray-500 font-light">Beat the full ladder with {color}</div>
+                      <div className="text-xs text-gray-500 font-light">Beat the hard ladder with {color}</div>
                     </div>
                     <div className="flex gap-3">
-                      <Medal filled={hasAchievement(`ladder:${color}:easy`)} color="#cd7f32" label="Easy" />
-                      <Medal filled={hasAchievement(`ladder:${color}:medium`)} color="#9ca3af" label="Medium" />
                       <Medal filled={hasAchievement(`ladder:${color}:hard`)} color="#facc15" label="Hard" />
                     </div>
                   </div>
@@ -7567,9 +7566,9 @@ useEffect(() => {
                     <div className="text-xs text-gray-500 font-light">{onlineWins} wins earned</div>
                   </div>
                   <div className="flex gap-3">
-                    <Medal filled={onlineWins >= 10} color="#cd7f32" label="10" />
-                    <Medal filled={onlineWins >= 50} color="#9ca3af" label="50" />
-                    <Medal filled={onlineWins >= 100} color="#facc15" label="100" />
+                    <Medal filled={onlineWins >= 1} color="#cd7f32" label="1" />
+                    <Medal filled={onlineWins >= 10} color="#9ca3af" label="10" />
+                    <Medal filled={onlineWins >= 50} color="#facc15" label="50" />
                   </div>
                 </div>
                 <div className="rounded-3xl border border-gray-100 bg-gray-50 p-5 flex items-center justify-between gap-4">
