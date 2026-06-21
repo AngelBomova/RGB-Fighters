@@ -2507,7 +2507,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
       let freezeFrames = 0;
       let disableBlock = false;
       let disableSpecial = false;
-      let specialDisableFrames = 540;
+      let specialDisableFrames = 600;
       let slowFrames = 0;
       let applyPoisonTicks = 0;
       let applyJumpDisable = 0;
@@ -2792,7 +2792,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         }
         if (disableBlock) {
           defender.blockDisabled = true;
-          defender.blockDisabledTimer = 420;
+          defender.blockDisabledTimer = 600;
         }
         if (disableSpecial) {
           defender.specialDisabled = true;
@@ -3152,7 +3152,7 @@ const beginBrownArmorCharge = (fighter) => {
   playSfx("charge_start");
   setManagedTimeout(() => {
     fighter.canSpecial2 = true;
-  }, 20000);
+  }, 15000);
   return true;
 };
 
@@ -3605,6 +3605,8 @@ const beginVoidCharge = (ai) => {
 const releaseVoidCharge = (ai) => {
   if (!ai.charging) return false;
 
+  const chargeDamage = 5 + Math.floor(ai.chargeFrames / 15);
+
   projectiles.current.push({
     x: ai.x + (ai.facing > 0 ? ai.width : 0),
     y: ai.y + 25,
@@ -3615,7 +3617,7 @@ const releaseVoidCharge = (ai) => {
     attackHeight: "mid",
     color: ai.color,
     radius: 8 + Math.min(ai.chargeFrames / 30, 8),
-    damage: 5,
+    damage: chargeDamage,
   });
   playSfx("chargeball");
 
@@ -5335,6 +5337,7 @@ if (hpW > 0) {
         }
 
         if (p.type === "void" && p.charging && !getHeld("special2")) {
+          const chargeDamage = 5 + Math.floor(p.chargeFrames / 15);
           projectiles.current.push({
             x: p.x + (p.facing > 0 ? p.width : 0),
             y: p.y + 25,
@@ -5345,7 +5348,7 @@ if (hpW > 0) {
             attackHeight: "mid",
             color: p.color,
             radius: 8 + Math.min(p.chargeFrames / 30, 8),
-            damage: 5,
+            damage: chargeDamage,
           });
           playSfx("chargeball");
           p.charging = false;
@@ -5358,6 +5361,7 @@ if (hpW > 0) {
       }
 
       if (p.type === "void" && p.charging && !getHeld("special2")) {
+        const chargeDamage = 5 + Math.floor(p.chargeFrames / 15);
         projectiles.current.push({
           x: p.x + (p.facing > 0 ? p.width : 0),
           y: p.y + 25,
@@ -5368,7 +5372,7 @@ if (hpW > 0) {
           attackHeight: "mid",
           color: p.color,
           radius: 8 + Math.min(p.chargeFrames / 30, 8),
-          damage: 5,
+          damage: chargeDamage,
         });
         playSfx("chargeball");
         p.charging = false;
@@ -6617,10 +6621,6 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   playSfx("block");
                 } else if (actualDamage > 0) {
                   playSfx("hit");
-                  target.blockDisabled = true;
-                  target.blockDisabledTimer = 600;
-                  target.specialDisabled = true;
-                  target.specialDisabledTimer = 540;
                 }
 
                 target.health -= actualDamage;
