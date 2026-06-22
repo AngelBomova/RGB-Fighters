@@ -2492,6 +2492,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
     const applyDamage = (attacker, defender, attackType, extra = {}) => {
       if (!defender.alive) return 0;
       if (defender.brownPhasing) return 0;
+      if (defender.brownInvulnTimer > 0) return 0;
       if (defender.transparentBurrowing) return 0;
       if (defender.type === "rainbow" && defender.rainbowTurretTimer > 0 && !extra.ignoreRainbowInvulnerable) return 0;
       if (attackType === "iceball" && defender.frozen) return 0;
@@ -2733,6 +2734,10 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
       if (pinkParryWorks) {
         defender.pinkParrying = false;
         defender.pinkParryTimer = 0;
+        if (attacker.brownInvulnTimer > 0) {
+          playSfx("block");
+          return 0;
+        }
         attacker.health -= 7;
         attacker.vx = (attacker.x < defender.x ? -1 : 1) * 8;
         attacker.vy = -25;
@@ -2751,17 +2756,6 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
       }
 
       const blocked = canBlockAttack(attacker, defender, attackType, extra.attackHeight ?? null);
-
-      if (!blocked && defender.brownInvulnTimer > 0) {
-        damage = 0;
-        freezeFrames = 0;
-        disableBlock = false;
-        disableSpecial = false;
-        slowFrames = 0;
-        applyPoisonTicks = 0;
-        applyJumpDisable = 0;
-        applyPoisonSlowFrames = 0;
-      }
 
       if (blocked) {
         damage = Math.floor(damage * 0.25);
@@ -6574,6 +6568,13 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
             if (dist < target.width / 2 + proj.radius) {
               if (target.type === "rainbow" && target.rainbowTurretTimer > 0 && !proj.reflected) {
+                if (proj.type === "yellowspear" && proj.owner) proj.owner.spearLocked = false;
+                projectiles.current.splice(i, 1);
+                handledProjectile = true;
+                break;
+              }
+
+              if (target.brownInvulnTimer > 0) {
                 if (proj.type === "yellowspear" && proj.owner) proj.owner.spearLocked = false;
                 projectiles.current.splice(i, 1);
                 handledProjectile = true;
