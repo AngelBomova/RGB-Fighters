@@ -2065,6 +2065,8 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         rainbowSummonId: null,
         isSummon: !!opts.isSummon,
         speedBoostTimer: 0,
+        airJumpsUsed: 0,
+        jumpWasHeld: false,
         cooldownBoostTimer: 0,
         damageAmpTimer: 0,
         spearLocked: false,
@@ -2308,6 +2310,8 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           p.rainbowTurretShotTimer = 0;
           p.rainbowSummonId = null;
           p.speedBoostTimer = 0;
+          p.airJumpsUsed = 0;
+          p.jumpWasHeld = false;
           p.cooldownBoostTimer = 0;
           p.damageAmpTimer = 0;
           p.spearLocked = false;
@@ -2464,6 +2468,7 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           p.y = plat.y - p.height;
           p.vy = 0;
           p.grounded = true;
+          p.airJumpsUsed = 0;
           if (!p.isHuman && p.aiClimbTargetKey && p.aiClimbTargetKey === platformKey(plat)) {
             p.aiClimbTargetKey = "";
             p.aiClimbTargetX = 0;
@@ -3103,6 +3108,7 @@ const landBrownShift = (fighter, x) => {
   fighter.vx = 0;
   fighter.vy = 0;
   fighter.grounded = true;
+  fighter.airJumpsUsed = 0;
 };
 
 const beginBrownShift = (fighter) => {
@@ -4840,6 +4846,8 @@ if (hpW > 0) {
         p.rainbowTurretShotTimer = 0;
         p.rainbowSummonId = null;
         p.speedBoostTimer = 0;
+        p.airJumpsUsed = 0;
+        p.jumpWasHeld = false;
         p.cooldownBoostTimer = 0;
         p.damageAmpTimer = 0;
         p.spearLocked = false;
@@ -5017,6 +5025,24 @@ if (hpW > 0) {
           if (canUseP1Controller && controllerInput) keysPressed.current[controllerInput] = false;
         }
       };
+      const jumpHeld = getHeld("jump");
+      const jumpPressed = jumpHeld && !p.jumpWasHeld;
+      const finishControls = () => {
+        p.jumpWasHeld = jumpHeld;
+      };
+      const tryJump = () => {
+        if (!jumpHeld || p.jumpDisabled) return;
+        if (p.grounded) {
+          p.vy = p.jumpPower;
+          p.grounded = false;
+          p.airJumpsUsed = 0;
+          return;
+        }
+        if (jumpPressed && p.type === "psychic" && p.speedBoostTimer > 0 && p.airJumpsUsed < 1) {
+          p.vy = p.jumpPower;
+          p.airJumpsUsed++;
+        }
+      };
 
       if (p.type === "electric" && p.reflecting) {
         if (getHeld("special2") && !p.specialDisabled) {
@@ -5035,6 +5061,7 @@ if (hpW > 0) {
         p.attackTimer = 0;
         p.attackType = "";
         p.attackHeight = "";
+        finishControls();
         return;
       }
 
@@ -5053,6 +5080,7 @@ if (hpW > 0) {
         p.attackTimer = 0;
         p.attackType = "";
         p.attackHeight = "";
+        finishControls();
         return;
       }
 
@@ -5070,10 +5098,7 @@ if (hpW > 0) {
             p.facing = 1;
           }
 
-          if (getHeld("jump") && !p.jumpDisabled && p.grounded) {
-            p.vy = p.jumpPower;
-            p.grounded = false;
-          }
+          tryJump();
         }
 
         p.blocking = false;
@@ -5092,6 +5117,7 @@ if (hpW > 0) {
           p.attackTimer = 0;
           p.attackType = "";
           p.attackHeight = "";
+          finishControls();
           return;
         }
 
@@ -5108,10 +5134,7 @@ if (hpW > 0) {
             p.facing = 1;
           }
 
-          if (getHeld("jump") && !p.jumpDisabled && p.grounded) {
-            p.vy = p.jumpPower;
-            p.grounded = false;
-          }
+          tryJump();
         }
 
         if (p.grayHammerTimer > 0) {
@@ -5124,6 +5147,7 @@ if (hpW > 0) {
           clearHeld("kick");
           clearHeld("special1");
           clearHeld("special2");
+          finishControls();
           return;
         }
 
@@ -5175,6 +5199,7 @@ if (hpW > 0) {
         if (getHeld("special1") && p.transparentBurrowing) {
           surfaceTransparent(p);
           clearHeld("special1");
+          finishControls();
           return;
         }
 
@@ -5351,6 +5376,7 @@ if (hpW > 0) {
           setManagedTimeout(() => (p.canSpecial2 = true), 3000);
         }
 
+        finishControls();
         return;
       }
 
@@ -5374,6 +5400,7 @@ if (hpW > 0) {
         p.canSpecial2 = false;
         setManagedTimeout(() => (p.canSpecial2 = true), 3000);
       }
+      finishControls();
     };
 
     const updatePerFrame = (p) => {
@@ -5512,7 +5539,7 @@ if (hpW > 0) {
       if (p.speedBoostTimer > 0) {
         p.speedBoostTimer--;
         p.speed = 6;
-        p.jumpPower = -26.4;
+        p.jumpPower = -22;
       } else {
         p.speed = 5;
         p.jumpPower = -22;
@@ -5749,6 +5776,7 @@ if (p.aiBlockHoldTimer > 0) {
         p.y = groundLevel - p.height;
         p.vy = 0;
         p.grounded = true;
+        p.airJumpsUsed = 0;
       } else {
         p.grounded = false;
       }
@@ -6665,6 +6693,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   target.vx = 0;
                   target.vy = 0;
                   target.grounded = true;
+                  target.airJumpsUsed = 0;
                   target.spearStunned = true;
                   target.spearStunTimer = 180;
                   target.frozen = false;
