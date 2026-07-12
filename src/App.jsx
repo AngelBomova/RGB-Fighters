@@ -2480,6 +2480,8 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
     };
 
     const isSolidFighter = (p) => p?.alive && !p.brownPhasing && !p.transparentBurrowing;
+    const solidTop = (p) => p.y + (p.ducking ? p.height * 0.4 : 0);
+    const solidHeight = (p) => p.height - (p.ducking ? p.height * 0.4 : 0);
 
     const resolveSolidFighterCollisions = () => {
       const solidFighters = fighters.filter(isSolidFighter);
@@ -2489,21 +2491,29 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           for (let j = i + 1; j < solidFighters.length; j++) {
             const a = solidFighters[i];
             const b = solidFighters[j];
+            const aTop = solidTop(a);
+            const bTop = solidTop(b);
+            const aHeight = solidHeight(a);
+            const bHeight = solidHeight(b);
+            const aBottom = aTop + aHeight;
+            const bBottom = bTop + bHeight;
             const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
-            const overlapY = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+            const overlapY = Math.min(aBottom, bBottom) - Math.max(aTop, bTop);
 
             if (overlapX <= 0) continue;
 
-            const aCenterY = a.y + a.height / 2;
-            const bCenterY = b.y + b.height / 2;
+            const aCenterY = aTop + aHeight / 2;
+            const bCenterY = bTop + bHeight / 2;
             const upper = aCenterY <= bCenterY ? a : b;
             const lower = upper === a ? b : a;
-            const headOverlap = upper.y + upper.height - lower.y;
-            const headGap = lower.y - (upper.y + upper.height);
+            const lowerTop = lower === a ? aTop : bTop;
+            const upperBottom = upper.y + upper.height;
+            const headOverlap = upperBottom - lowerTop;
+            const headGap = lowerTop - upperBottom;
             const canStandOnHead = upper.y < lower.y && upper.vy >= 0 && headGap <= 4 && headOverlap <= 24 && overlapX >= upper.width * 0.25;
 
             if (canStandOnHead) {
-              upper.y = lower.y - upper.height;
+              upper.y = lowerTop - upper.height;
               upper.vy = 0;
               upper.grounded = true;
               upper.airJumpsUsed = 0;
@@ -2783,6 +2793,8 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         defender.pinkParryTimer > 0 &&
         !extra.isProjectile &&
         attackType !== "grayhammer" &&
+        attackType !== "transparentrise" &&
+        attackType !== "transparentpound" &&
         (
           defender.pinkParryDucking
             ? ["unblockable", "low", "mid"].includes(attackHeight)
