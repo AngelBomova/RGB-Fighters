@@ -2479,6 +2479,59 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
       }
     };
 
+    const isSolidFighter = (p) => p?.alive && !p.brownPhasing && !p.transparentBurrowing;
+
+    const resolveSolidFighterCollisions = () => {
+      const solidFighters = fighters.filter(isSolidFighter);
+
+      for (let pass = 0; pass < 3; pass++) {
+        for (let i = 0; i < solidFighters.length; i++) {
+          for (let j = i + 1; j < solidFighters.length; j++) {
+            const a = solidFighters[i];
+            const b = solidFighters[j];
+            const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+            const overlapY = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+
+            if (overlapX <= 0) continue;
+
+            const aCenterY = a.y + a.height / 2;
+            const bCenterY = b.y + b.height / 2;
+            const upper = aCenterY <= bCenterY ? a : b;
+            const lower = upper === a ? b : a;
+            const headOverlap = upper.y + upper.height - lower.y;
+            const headGap = lower.y - (upper.y + upper.height);
+            const canStandOnHead = upper.y < lower.y && upper.vy >= 0 && headGap <= 4 && headOverlap <= 24 && overlapX >= upper.width * 0.25;
+
+            if (canStandOnHead) {
+              upper.y = lower.y - upper.height;
+              upper.vy = 0;
+              upper.grounded = true;
+              upper.airJumpsUsed = 0;
+              continue;
+            }
+
+            if (overlapY <= 0) continue;
+
+            const aCenterX = a.x + a.width / 2;
+            const bCenterX = b.x + b.width / 2;
+            const direction = aCenterX <= bCenterX ? -1 : 1;
+            const push = overlapX / 2 + 0.01;
+            a.x = Math.max(0, Math.min(WORLD_W - a.width, a.x + direction * push));
+            b.x = Math.max(0, Math.min(WORLD_W - b.width, b.x - direction * push));
+            if (direction < 0) {
+              if (a.vx > 0) a.vx = 0;
+              if (b.vx < 0) b.vx = 0;
+            } else {
+              if (a.vx < 0) a.vx = 0;
+              if (b.vx > 0) b.vx = 0;
+            }
+          }
+        }
+      }
+
+      solidFighters.forEach(updateHitboxes);
+    };
+
     const canBlockAttack = (attacker, defender, attackType, attackHeightOverride = null) => {
       if (!defender.blocking || defender.blockDisabled) return false;
       if (attackType === "dash") return false;
@@ -6532,6 +6585,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
         }
 
         for (const p of fighters) updatePerFrame(p);
+        resolveSolidFighterCollisions();
 
         for (const attacker of fighters) {
           if (!attacker.alive) continue;
