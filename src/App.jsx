@@ -4,6 +4,7 @@ import background3Url from "./assets/Background3.png";
 import background4Url from "./assets/Background4.png";
 import background5Url from "./assets/Background5.png";
 import homepageUrl from "./assets/homepage.png";
+import rgbLogoUrl from "./assets/RGBlogo.png";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import api from "./api";
 import Login from "./online/Login";
@@ -7797,7 +7798,10 @@ useEffect(() => {
     return (
       <Layout>
         <div className="bg-white rounded-3xl p-12 text-center max-w-7xl border border-black/5" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.06)" }}>
-          <h1 className="text-6xl font-light text-gray-900 mb-4">RGB Fighters</h1>
+          <div className="mb-4 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <img src={rgbLogoUrl} alt="RGB Fighters logo" className="h-16 w-16 object-contain sm:h-20 sm:w-20" />
+            <h1 className="text-6xl font-light text-gray-900">RGB Fighters</h1>
+          </div>
           <p className="text-4xl font-light text-gray-500 mb-12">Choose a Mode</p>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
