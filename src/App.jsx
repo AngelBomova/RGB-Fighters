@@ -1910,6 +1910,17 @@ const toggleFullscreen = async () => {
     healSafeDistance: 300,
     chargeMinFrames: 35,
     chargeMaxFrames: 85,
+    stuckFrames: 120,
+    escapeChance: 0.45,
+    adaptRate: 0.45,
+    targetLag: 0.07,
+    aimError: 54,
+    verticalError: 24,
+    observationJitter: 16,
+    offenseBias: 0.82,
+    defenseBias: 0.62,
+    maxDefenseHold: 34,
+    maxLockFrames: 150,
   },
   medium: {
     reactionTime: 18,
@@ -1927,6 +1938,17 @@ const toggleFullscreen = async () => {
     healSafeDistance: 240,
     chargeMinFrames: 45,
     chargeMaxFrames: 105,
+    stuckFrames: 90,
+    escapeChance: 0.7,
+    adaptRate: 0.75,
+    targetLag: 0.13,
+    aimError: 32,
+    verticalError: 15,
+    observationJitter: 9,
+    offenseBias: 1,
+    defenseBias: 0.84,
+    maxDefenseHold: 48,
+    maxLockFrames: 130,
   },
   hard: {
     reactionTime: 8,
@@ -1944,6 +1966,17 @@ const toggleFullscreen = async () => {
     healSafeDistance: 180,
     chargeMinFrames: 55,
     chargeMaxFrames: 130,
+    stuckFrames: 60,
+    escapeChance: 0.95,
+    adaptRate: 1,
+    targetLag: 0.22,
+    aimError: 16,
+    verticalError: 8,
+    observationJitter: 4,
+    offenseBias: 1.12,
+    defenseBias: 1,
+    maxDefenseHold: 62,
+    maxLockFrames: 110,
   },
 };
 
@@ -2117,12 +2150,43 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
         aiObservedTargetId: null,
         aiObservedTargetX: null,
         aiObservedTargetY: null,
+        aiPerceivedTargetX: x,
+        aiPerceivedTargetY: y,
+        aiAimOffsetX: 0,
+        aiAimOffsetY: 0,
+        aiAimDriftTimer: 0,
+        aiObservationTimer: 0,
+        aiObservedState: null,
+        aiIncomingProjectile: null,
+        aiIncomingProjectileFrames: 0,
         aiTargetStillTimer: 0,
         aiLevelPathTimer: 0,
         aiDropDir: 0,
         aiDropCommitTimer: 0,
         aiClimbTargetKey: "",
         aiClimbTargetX: 0,
+        aiLastX: x,
+        aiLastY: y,
+        aiStuckTimer: 0,
+        aiEscapeTimer: 0,
+        aiEscapeDir: 0,
+        aiLastAbilityTimer: 0,
+        aiLockTimer: 0,
+        aiDefenseTimer: 0,
+        aiDefenseCooldown: 0,
+        aiOffenseTimer: 0,
+        aiJumpCooldown: 0,
+        aiFailedClimbCooldown: 0,
+        aiJumpStartPlatformKey: "",
+        aiJumpTargetPlatformKey: "",
+        aiFailedJumpCount: 0,
+        aiRead: {
+          rush: 0,
+          turtle: 0,
+          airborne: 0,
+          projectile: 0,
+          low: 0,
+        },
       };
     };
 
@@ -2470,10 +2534,30 @@ const getAiSettings = (ai) => ai?.aiDifficulty ? difficultySettings[ai.aiDifficu
           p.vy = 0;
           p.grounded = true;
           p.airJumpsUsed = 0;
-          if (!p.isHuman && p.aiClimbTargetKey && p.aiClimbTargetKey === platformKey(plat)) {
-            p.aiClimbTargetKey = "";
-            p.aiClimbTargetX = 0;
-            p.aiLevelPathTimer = 0;
+          if (!p.isHuman) {
+            const landedKey = platformKey(plat);
+            if (p.aiJumpStartPlatformKey && p.aiJumpTargetPlatformKey) {
+              if (landedKey === p.aiJumpTargetPlatformKey) {
+                p.aiFailedJumpCount = 0;
+              } else if (landedKey === p.aiJumpStartPlatformKey) {
+                p.aiFailedJumpCount = (p.aiFailedJumpCount || 0) + 1;
+                if (p.aiFailedJumpCount >= 2) {
+                  p.aiFailedClimbCooldown = 90;
+                  p.aiClimbTargetKey = "";
+                  p.aiClimbTargetX = 0;
+                  p.aiLevelPathTimer = 0;
+                  p.aiEscapeTimer = 24;
+                  p.aiEscapeDir = p.facing || 1;
+                }
+              }
+            }
+            p.aiJumpStartPlatformKey = "";
+            p.aiJumpTargetPlatformKey = "";
+            if (p.aiClimbTargetKey && p.aiClimbTargetKey === landedKey) {
+              p.aiClimbTargetKey = "";
+              p.aiClimbTargetX = 0;
+              p.aiLevelPathTimer = 0;
+            }
           }
           return;
         }
@@ -2959,7 +3043,8 @@ const meleeCooldown = (fighter, baseCooldown) => (
 const rainbowShotColor = () => RAINBOW_COLORS[Math.floor(Date.now() / 80) % RAINBOW_COLORS.length];
 
 const fireRainbowShot = (owner) => {
-  const target = getNearestEnemy(owner);
+  const realTarget = getNearestEnemy(owner);
+  const target = !owner.isHuman && realTarget ? getAiPerceivedTarget(owner, realTarget) : realTarget;
   if (!target) return;
   const startX = owner.x + owner.width / 2;
   const startY = owner.y + owner.height / 2;
@@ -3043,7 +3128,8 @@ const monochromeShotColor = () => MONOCHROME_COLORS[Math.floor(Date.now() / 100)
 
 const beginMonochromeMissile = (fighter) => {
   if (!fighter.canProjectile || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging) return false;
-  const target = getNearestEnemy(fighter);
+  const realTarget = getNearestEnemy(fighter);
+  const target = !fighter.isHuman && realTarget ? getAiPerceivedTarget(fighter, realTarget) : realTarget;
   if (!target) return false;
 
   stopDefense(fighter);
@@ -3699,8 +3785,9 @@ const releaseVoidCharge = (ai) => {
 
 const getIncomingProjectile = (ai) => {
   const aiCenter = centerX(ai);
+  const settings = getAiSettings(ai);
 
-  return projectiles.current.find((proj) => {
+  const threat = projectiles.current.find((proj) => {
     if (proj.team === ai.team) return false;
 
     const xDist = Math.abs(proj.x - aiCenter);
@@ -3709,17 +3796,34 @@ const getIncomingProjectile = (ai) => {
     const horizontalThreat =
       ((proj.vx > 0 && proj.x < aiCenter) ||
         (proj.vx < 0 && proj.x > aiCenter)) &&
-      xDist < getAiSettings(ai).projectileReactRange &&
+      xDist < settings.projectileReactRange &&
       yDist < 70;
 
     const verticalThreat =
       (proj.vy || 0) > 0 &&
       proj.y < centerY(ai) &&
       xDist < 55 &&
-      yDist < getAiSettings(ai).projectileReactRange;
+      yDist < settings.projectileReactRange;
 
     return horizontalThreat || verticalThreat;
   });
+
+  // A person needs a few frames to notice and commit to a response. Keeping
+  // the same projectile reference makes this a visible-threat timer instead
+  // of an omniscient collision check every frame.
+  if (ai.aiIncomingProjectile !== threat) {
+    ai.aiIncomingProjectile = threat || null;
+    ai.aiIncomingProjectileFrames = threat ? 1 : 0;
+  } else if (threat) {
+    ai.aiIncomingProjectileFrames = (ai.aiIncomingProjectileFrames || 0) + 1;
+  }
+
+  if (!threat) return null;
+
+  const xDist = Math.abs(threat.x - aiCenter);
+  const requiredFrames = Math.max(2, Math.floor(settings.reactionTime * 0.4));
+  if (ai.aiIncomingProjectileFrames < requiredFrames && xDist > 95) return null;
+  return threat;
 };
 
 const smartBlock = (ai, attackHeight = "mid") => {
@@ -3867,8 +3971,22 @@ const getPlatformLaunchX = (from, to, desiredX) => {
   return clampToPlatform(from, desiredX);
 };
 
+const beginAiJump = (ai, direction = ai.facing || 1, targetPlatform = null) => {
+  if (!ai.grounded || ai.jumpDisabled || ai.aiJumpCooldown > 0) return false;
+  const currentPlatform = getPlatformFighterIsOn(ai);
+  ai.vy = ai.jumpPower;
+  ai.grounded = false;
+  ai.airJumpsUsed = 0;
+  ai.facing = direction || ai.facing || 1;
+  ai.vx = (direction || ai.facing || 1) * ai.speed;
+  ai.aiJumpCooldown = 26;
+  ai.aiJumpStartPlatformKey = currentPlatform ? platformKey(currentPlatform) : "";
+  ai.aiJumpTargetPlatformKey = targetPlatform ? platformKey(targetPlatform) : "";
+  return true;
+};
+
 const tryJumpToPlatform = (ai, opp) => {
-  if (ai.ducking || !ai.grounded || ai.jumpDisabled) return false;
+  if (ai.ducking || !ai.grounded || ai.jumpDisabled || ai.aiJumpCooldown > 0 || ai.aiFailedClimbCooldown > 0) return false;
 
   const aiFeet = ai.y + ai.height;
   const oppAbove = centerY(opp) < centerY(ai) - 65;
@@ -3899,15 +4017,11 @@ const tryJumpToPlatform = (ai, opp) => {
     Math.min(targetPlatform.x + targetPlatform.width - 20, centerX(opp))
   );
 
-  ai.vy = ai.jumpPower;
-  ai.grounded = false;
-  ai.vx = targetX > centerX(ai) ? ai.speed : -ai.speed;
-
-  return true;
+  return beginAiJump(ai, targetX > centerX(ai) ? 1 : -1, targetPlatform);
 };
 
 const tryClimbTowardOpponent = (ai, opp) => {
-  if (ai.ducking || !ai.grounded || ai.jumpDisabled) return false;
+  if (ai.ducking || !ai.grounded || ai.jumpDisabled || ai.aiJumpCooldown > 0 || ai.aiFailedClimbCooldown > 0) return false;
 
   const aiFeet = ai.y + ai.height;
   const aiCenter = centerX(ai);
@@ -3935,8 +4049,7 @@ const tryClimbTowardOpponent = (ai, opp) => {
     ai.attacking = false;
 
     if (readyToJump) {
-      ai.vy = ai.jumpPower;
-      ai.grounded = false;
+      if (!beginAiJump(ai, airDirection, activeTarget)) return false;
     }
 
     return true;
@@ -3964,8 +4077,7 @@ const tryClimbTowardOpponent = (ai, opp) => {
   ai.attacking = false;
 
   if (readyToJump) {
-    ai.vy = ai.jumpPower;
-    ai.grounded = false;
+    if (!beginAiJump(ai, airDirection, targetPlatform)) return false;
   }
 
   return true;
@@ -4033,6 +4145,24 @@ const tryDropToOpponent = (ai, opp) => {
 
 const chaseOpponentLevel = (ai, opp) => {
   const verticalGap = centerY(opp) - centerY(ai);
+  if (ai.aiFailedClimbCooldown > 0 && verticalGap < -55) {
+    ai.aiClimbTargetKey = "";
+    ai.aiClimbTargetX = 0;
+    ai.aiLevelPathTimer = 0;
+    if (ai.grounded && !ai.ducking) {
+      const currentPlatform = getPlatformFighterIsOn(ai);
+      const targetX = currentPlatform
+        ? clampToPlatform(currentPlatform, centerX(opp), 28)
+        : centerX(opp);
+      const direction = targetX >= centerX(ai) ? 1 : -1;
+      ai.facing = direction;
+      ai.vx = direction * ai.speed * 0.75;
+      ai.blocking = false;
+      ai.attacking = false;
+      return true;
+    }
+  }
+
   if (ai.grounded && Math.abs(verticalGap) < 55 && ai.aiDropCommitTimer <= 0) {
     ai.aiLevelPathTimer = 0;
     ai.aiDropCommitTimer = 0;
@@ -4109,10 +4239,18 @@ const chaseOpponentLevel = (ai, opp) => {
 };
 
 const updateAiTargetRead = (ai, opp) => {
+  const settings = getAiSettings(ai);
   if (ai.aiObservedTargetId !== opp.id) {
     ai.aiObservedTargetId = opp.id;
     ai.aiObservedTargetX = opp.x;
     ai.aiObservedTargetY = opp.y;
+    ai.aiPerceivedTargetX = opp.x;
+    ai.aiPerceivedTargetY = opp.y;
+    ai.aiAimOffsetX = 0;
+    ai.aiAimOffsetY = 0;
+    ai.aiAimDriftTimer = 0;
+    ai.aiObservationTimer = 0;
+    ai.aiObservedState = null;
     ai.aiTargetStillTimer = 0;
     return;
   }
@@ -4124,10 +4262,307 @@ const updateAiTargetRead = (ai, opp) => {
   ai.aiTargetStillTimer = moved < 1.2 ? (ai.aiTargetStillTimer || 0) + 1 : 0;
   ai.aiObservedTargetX = opp.x;
   ai.aiObservedTargetY = opp.y;
+
+  // Refresh combat information at a difficulty-scaled cadence. Position is
+  // tracked continuously with lag below, but attack/block/stun state is only
+  // learned when the AI gets another believable visual read of the opponent.
+  ai.aiObservationTimer = Math.max(0, (ai.aiObservationTimer || 0) - 1);
+  if (!ai.aiObservedState || ai.aiObservationTimer <= 0) {
+    ai.aiObservedState = {
+      attacking: !!opp.attacking,
+      attackType: opp.attackType || "",
+      attackHeight: opp.attackHeight || "",
+      blocking: !!opp.blocking,
+      ducking: !!opp.ducking,
+      grounded: !!opp.grounded,
+      frozen: !!opp.frozen,
+      hitstun: !!opp.hitstun,
+      spearStunned: !!opp.spearStunned,
+      blockDisabled: !!opp.blockDisabled,
+      jumpDisabled: !!opp.jumpDisabled,
+      damageAmpTimer: opp.damageAmpTimer || 0,
+    };
+    const jitter = (rand() * 2 - 1) * settings.observationJitter;
+    ai.aiObservationTimer = Math.max(3, Math.round(settings.reactionTime + jitter));
+  }
+
+  ai.aiAimDriftTimer = Math.max(0, (ai.aiAimDriftTimer || 0) - 1);
+  if (ai.aiAimDriftTimer <= 0) {
+    const stillBonus = (ai.aiTargetStillTimer || 0) > 90 ? 0.45 : 1;
+    ai.aiAimOffsetX = (rand() * 2 - 1) * settings.aimError * stillBonus;
+    ai.aiAimOffsetY = (rand() * 2 - 1) * settings.verticalError * stillBonus;
+    ai.aiAimDriftTimer = Math.max(10, settings.reactionTime + 12 + Math.floor(rand() * 20));
+  }
+
+  const lag = settings.targetLag;
+  const desiredX = opp.x + (ai.aiAimOffsetX || 0);
+  const desiredY = opp.y + (ai.aiAimOffsetY || 0);
+  ai.aiPerceivedTargetX = (ai.aiPerceivedTargetX ?? opp.x) + (desiredX - (ai.aiPerceivedTargetX ?? opp.x)) * lag;
+  ai.aiPerceivedTargetY = (ai.aiPerceivedTargetY ?? opp.y) + (desiredY - (ai.aiPerceivedTargetY ?? opp.y)) * lag;
+};
+
+const getAiPerceivedTarget = (ai, opp) => ({
+  ...opp,
+  ...(ai.aiObservedState || {}),
+  x: Math.max(0, Math.min(WORLD_W - opp.width, ai.aiPerceivedTargetX ?? opp.x)),
+  y: Math.max(0, Math.min(WORLD_H - opp.height, ai.aiPerceivedTargetY ?? opp.y)),
+});
+
+const updateAiMovementMemory = (ai, opp) => {
+  const moved =
+    Math.abs((ai.aiLastX ?? ai.x) - ai.x) +
+    Math.abs((ai.aiLastY ?? ai.y) - ai.y);
+  const needsProgress =
+    Math.abs(centerX(opp) - centerX(ai)) > 135 ||
+    Math.abs(centerY(opp) - centerY(ai)) > 70;
+  const busy =
+    ai.attacking ||
+    ai.charging ||
+    ai.healing ||
+    ai.reflecting ||
+    ai.spearLocked ||
+    ai.purpleCharging ||
+    ai.orangeCharging ||
+    ai.transparentBurrowing ||
+    ai.grayHammerTimer > 0 ||
+    ai.brownCharging;
+
+  ai.aiStuckTimer = needsProgress && !busy && moved < 0.45 ? (ai.aiStuckTimer || 0) + 1 : 0;
+  ai.aiLastX = ai.x;
+  ai.aiLastY = ai.y;
+
+  if (ai.aiLastAbilityTimer > 0) ai.aiLastAbilityTimer--;
+  if (ai.aiDefenseCooldown > 0) ai.aiDefenseCooldown--;
+  if (ai.aiEscapeTimer > 0) ai.aiEscapeTimer--;
+  if (ai.aiJumpCooldown > 0) ai.aiJumpCooldown--;
+  if (ai.aiFailedClimbCooldown > 0) ai.aiFailedClimbCooldown--;
+};
+
+const updateAiPlayerRead = (ai, opp, incoming) => {
+  const read = ai.aiRead || { rush: 0, turtle: 0, airborne: 0, projectile: 0, low: 0 };
+  const settings = getAiSettings(ai);
+  const rate = settings.adaptRate || 0.5;
+  const dx = Math.abs(centerX(opp) - centerX(ai));
+  const decay = 0.985;
+
+  read.rush = read.rush * decay + (dx < 125 && (Math.abs(opp.vx || 0) > 1.5 || opp.attacking) ? rate : 0);
+  read.turtle = read.turtle * decay + (opp.blocking || opp.ducking || (ai.aiTargetStillTimer || 0) > 75 ? rate : 0);
+  read.airborne = read.airborne * decay + (!opp.grounded ? rate : 0);
+  read.projectile = read.projectile * decay + (incoming || (opp.canProjectile === false && dx > 160) ? rate : 0);
+  read.low = read.low * decay + (opp.ducking || opp.attackHeight === "low" ? rate : 0);
+  ai.aiRead = read;
+  return read;
+};
+
+const clearAiCombatLocks = (ai) => {
+  ai.healing = false;
+  ai.charging = false;
+  ai.chargeFrames = 0;
+  ai.purpleCharging = false;
+  ai.purpleChargeTimer = 0;
+  ai.orangeCharging = false;
+  ai.orangeChargeTimer = 0;
+  ai.reflecting = false;
+  ai.reflectTimer = 0;
+  ai.spearLocked = false;
+  ai.pinkParrying = false;
+  ai.pinkParryTimer = 0;
+  ai.brownCharging = false;
+  ai.brownChargeTimer = 0;
+  ai.brownPhasing = false;
+  ai.transparentBurrowing = false;
+  ai.transparentBurrowTimer = 0;
+  ai.transparentPoundChargeTimer = 0;
+  ai.transparentPoundActiveTimer = 0;
+  ai.grayHammerTimer = 0;
+  ai.grayHammerRotation = 0;
+  ai.grayHammerHitIds = {};
+  ai.attacking = false;
+  ai.attackTimer = 0;
+  ai.attackType = "";
+  ai.attackHeight = "";
+  ai.blocking = false;
+  ai.ducking = false;
+  ai.vx = 0;
+  ai.aiLockTimer = 0;
+  ai.aiDefenseTimer = 0;
+  ai.aiLastAbilityTimer = Math.max(ai.aiLastAbilityTimer || 0, 20);
+};
+
+const updateAiLockWatchdog = (ai) => {
+  const locked =
+    ai.healing ||
+    ai.charging ||
+    ai.purpleCharging ||
+    ai.orangeCharging ||
+    ai.reflecting ||
+    ai.spearLocked ||
+    ai.pinkParrying ||
+    ai.brownCharging ||
+    ai.brownPhasing ||
+    ai.transparentBurrowing ||
+    ai.transparentPoundChargeTimer > 0 ||
+    ai.transparentPoundActiveTimer > 0 ||
+    ai.grayHammerTimer > 0;
+
+  if (!locked) {
+    ai.aiLockTimer = 0;
+    return false;
+  }
+
+  ai.aiLockTimer = (ai.aiLockTimer || 0) + 1;
+  if (ai.aiLockTimer <= getAiSettings(ai).maxLockFrames) return false;
+
+  clearAiCombatLocks(ai);
+  return true;
+};
+
+const tryAiEscapeStuck = (ai, opp, sameLane, incoming) => {
+  const settings = getAiSettings(ai);
+  if ((ai.aiStuckTimer || 0) < settings.stuckFrames) return false;
+  if (rand() > settings.escapeChance && ai.aiStuckTimer < settings.stuckFrames * 1.6) return false;
+
+  ai.aiClimbTargetKey = "";
+  ai.aiClimbTargetX = 0;
+  ai.aiDropCommitTimer = 0;
+  ai.aiDropDir = 0;
+  ai.aiLevelPathTimer = 0;
+  stopDefense(ai);
+  faceTarget(ai, opp);
+
+  if (tryAiAbility(ai, opp, sameLane, incoming, { force: true, reason: "stuck" })) {
+    ai.aiStuckTimer = 0;
+    return true;
+  }
+
+  if (centerY(opp) > centerY(ai) + 65 && tryDropToOpponent(ai, opp)) {
+    ai.aiStuckTimer = 0;
+    return true;
+  }
+
+  if (ai.grounded && !ai.jumpDisabled) {
+    const dir = centerX(opp) >= centerX(ai) ? 1 : -1;
+    if (!beginAiJump(ai, dir)) return false;
+    ai.aiEscapeTimer = 24;
+    ai.aiEscapeDir = dir;
+    ai.aiStuckTimer = 0;
+    return true;
+  }
+
+  const dir = ai.aiEscapeDir || (centerX(opp) >= centerX(ai) ? 1 : -1);
+  ai.facing = dir;
+  ai.vx = dir * ai.speed;
+  ai.aiEscapeTimer = 18;
+  ai.aiEscapeDir = dir;
+  ai.aiStuckTimer = 0;
+  return true;
+};
+
+const tryAiAbility = (ai, opp, sameLane, incoming, options = {}) => {
+  const settings = getAiSettings(ai);
+  const read = ai.aiRead || {};
+  const dx = Math.abs(centerX(opp) - centerX(ai));
+  const force = !!options.force;
+  const targetVulnerable =
+    opp.frozen ||
+    opp.hitstun ||
+    opp.spearStunned ||
+    opp.blockDisabled ||
+    opp.jumpDisabled ||
+    !opp.grounded;
+  const chance = force
+    ? 1
+    : Math.min(0.99, (settings.specialChance + Math.max(read.turtle || 0, read.rush || 0, read.airborne || 0) * 0.025) * settings.offenseBias);
+  const canTry = force || ((ai.aiLastAbilityTimer || 0) <= 0 && rand() < chance);
+  if (!canTry || ai.specialDisabled) return false;
+
+  let used = false;
+  switch (ai.type) {
+    case "rainbow":
+      used =
+        (ai.canSpecial2 && !getActiveRainbowSummon(ai) && (force || read.rush > 10 || read.turtle > 12) && beginRainbowSummon(ai)) ||
+        (ai.canProjectile && (force || dx > 135 || read.airborne > 8) && beginRainbowTurret(ai));
+      break;
+    case "monochrome":
+      used =
+        (ai.canProjectile && (force || read.airborne > 8 || dx > 170) && beginMonochromeMissile(ai)) ||
+        (ai.canSpecial2 && dx < 650 && (force || read.turtle > 8 || targetVulnerable) && beginMonochromeWave(ai));
+      break;
+    case "pink":
+      used =
+        (ai.canSpecial2 && (force || (sameLane && dx < 165 && (opp.attacking || read.rush > 8))) && beginPinkParry(ai)) ||
+        (ai.canProjectile && (force || read.airborne > 7 || read.turtle > 10 || dx > 150) && beginPinkPlus(ai));
+      break;
+    case "brown":
+      used =
+        (ai.canProjectile && (force || incoming || read.projectile > 8 || dx > 230) && beginBrownShift(ai)) ||
+        (ai.canSpecial2 && dx < 285 && (force || read.rush > 7 || targetVulnerable) && beginBrownArmorCharge(ai));
+      break;
+    case "gray":
+      used =
+        (ai.canProjectile && (force || dx > 115 || read.airborne > 7) && beginGrayWind(ai)) ||
+        (ai.canSpecial2 && sameLane && dx < 135 && (force || read.rush > 6 || targetVulnerable) && beginGrayHammer(ai));
+      break;
+    case "transparent":
+      used =
+        (ai.canProjectile && (force || read.turtle > 7 || dx > 180) && beginTransparentBurrow(ai)) ||
+        (ai.canSpecial2 && dx < 540 && (force || read.rush > 8 || targetVulnerable) && beginTransparentPound(ai));
+      break;
+    case "psychic":
+      used =
+        (ai.canSpecial2 && ai.speedBoostTimer <= 0 && (force || dx > 150 || read.projectile > 7) && beginPurplePowerUp(ai)) ||
+        (ai.canProjectile && sameLane && dx > 110 && dx < 460 && (force || read.turtle > 7 || targetVulnerable) && beginProjectile(ai));
+      break;
+    case "electric":
+      used =
+        (incoming && ai.canSpecial2 && beginYellowReflect(ai)) ||
+        (ai.canProjectile && sameLane && dx > 125 && dx < 540 && (force || read.airborne > 6 || read.projectile > 5 || targetVulnerable) && beginProjectile(ai));
+      break;
+    case "explosion":
+      used =
+        (ai.canSpecial2 && sameLane && dx > 90 && dx < 445 && (force || ai.cooldownBoostTimer <= 0 || read.turtle > 7) && beginOrangeCooldownBoost(ai)) ||
+        (ai.canProjectile && sameLane && dx > 105 && dx < 445 && (force || read.airborne > 5 || targetVulnerable) && beginProjectile(ai));
+      break;
+    case "light":
+      used =
+        (ai.canSpecial2 && dx < 580 && (force || read.turtle > 6 || read.airborne > 5 || targetVulnerable) && beginWhiteDrop(ai, opp)) ||
+        (ai.canProjectile && sameLane && dx > 85 && dx < 445 && (force || read.low < 6 || targetVulnerable) && beginProjectile(ai));
+      break;
+    case "poison":
+      used =
+        (ai.canSpecial2 && ai.health <= settings.healHealth && dx > Math.max(120, settings.healSafeDistance - 80) && !incoming && beginPoisonHeal(ai)) ||
+        (ai.canProjectile && sameLane && dx > 90 && dx < 430 && (force || read.turtle > 5 || targetVulnerable) && beginProjectile(ai));
+      break;
+    case "void":
+      used =
+        (ai.canSpecial2 && sameLane && dx > 130 && dx < 535 && (force || read.turtle > 6 || read.projectile > 5 || targetVulnerable) && beginVoidCharge(ai)) ||
+        (ai.canProjectile && sameLane && dx > 100 && dx < 430 && (force || targetVulnerable) && beginProjectile(ai));
+      break;
+    case "ice":
+      used =
+        (ai.canSpecial2 && sameLane && dx > 90 && dx < 445 && (force || read.rush > 5 || read.turtle > 7 || targetVulnerable) && beginIceSlowOrb(ai)) ||
+        (ai.canProjectile && sameLane && dx > 95 && dx < 430 && (force || targetVulnerable) && beginProjectile(ai));
+      break;
+    case "fire":
+      used =
+        (ai.canSpecial2 && sameLane && dx > 85 && dx < 330 && (force || read.turtle > 5 || targetVulnerable || ai.x < 70 || ai.x + ai.width > WORLD_W - 70) && beginRedDash(ai)) ||
+        (ai.canProjectile && sameLane && dx > 120 && dx < 430 && (force || read.airborne > 5 || read.turtle > 6) && beginProjectile(ai));
+      break;
+    default:
+      used = ai.canProjectile && sameLane && dx > 130 && beginProjectile(ai);
+      break;
+  }
+
+  if (used) {
+    ai.aiLastAbilityTimer = force ? 18 : Math.max(10, settings.reactionTime);
+    return true;
+  }
+  return false;
 };
 
 const getAiTactic = (ai, opp, targetStill) => {
   const settings = getAiSettings(ai);
+  const read = ai.aiRead || {};
   const tactic = {
     spacing: settings.spacing,
     meleeRange: settings.meleeRange,
@@ -4140,6 +4575,28 @@ const getAiTactic = (ai, opp, targetStill) => {
     tactic.spacing = Math.max(56, tactic.spacing - 34);
     tactic.aggression = Math.min(1.35, tactic.aggression + 0.32);
     tactic.specialChance = Math.min(0.98, tactic.specialChance + 0.22);
+  }
+
+  if (read.rush > 10) {
+    tactic.spacing += 28;
+    tactic.specialChance += 0.1;
+  }
+
+  if (read.turtle > 10) {
+    tactic.spacing = Math.max(62, tactic.spacing - 22);
+    tactic.aggression += 0.2;
+    tactic.specialChance += 0.16;
+  }
+
+  if (read.airborne > 8) {
+    tactic.meleeRange += 14;
+    tactic.projectileRange = Math.max(70, tactic.projectileRange - 20);
+    tactic.specialChance += 0.12;
+  }
+
+  if (read.projectile > 8) {
+    tactic.spacing = Math.max(tactic.spacing, 150);
+    tactic.specialChance += 0.12;
   }
 
   switch (ai.type) {
@@ -4234,24 +4691,33 @@ const updateAI = (ai) => {
   const opp = getNearestEnemy(ai);
   if (!opp) return;
 
-  const dx = centerX(opp) - centerX(ai);
-  const abs = Math.abs(dx);
-  const sameLane = sameVerticalLane(ai, opp, 42);
   updateAiTargetRead(ai, opp);
+  const readOpp = getAiPerceivedTarget(ai, opp);
+  const dx = centerX(readOpp) - centerX(ai);
+  const abs = Math.abs(dx);
+  const sameLane = sameVerticalLane(ai, readOpp, 42);
+  const incoming = getIncomingProjectile(ai);
+  updateAiMovementMemory(ai, readOpp);
+  updateAiPlayerRead(ai, readOpp, incoming);
   const targetStill = (ai.aiTargetStillTimer || 0) > 120;
-  const tactic = getAiTactic(ai, opp, targetStill);
+  const tactic = getAiTactic(ai, readOpp, targetStill);
+  const settings = getAiSettings(ai);
+  const defenseChance = (value) => Math.max(0.02, Math.min(0.98, value * settings.defenseBias));
+  const offenseChance = (value) => Math.max(0.02, Math.min(0.99, value * settings.offenseBias));
 
   const targetVulnerable =
-    opp.frozen ||
-    opp.hitstun ||
-    opp.spearStunned ||
-    opp.blockDisabled ||
-    opp.jumpDisabled ||
-    !opp.grounded;
+    readOpp.frozen ||
+    readOpp.hitstun ||
+    readOpp.spearStunned ||
+    readOpp.blockDisabled ||
+    readOpp.jumpDisabled ||
+    !readOpp.grounded;
 
   const aiCornered =
     ai.x < 55 ||
     ai.x + ai.width > WORLD_W - 55;
+
+  if (updateAiLockWatchdog(ai)) return;
 
   if (ai.transparentBurrowing) {
     ai.vx = (dx >= 0 ? 1 : -1) * 7;
@@ -4272,10 +4738,19 @@ const updateAI = (ai) => {
     return;
   }
 
+  if (ai.aiEscapeTimer > 0) {
+    stopDefense(ai);
+    ai.vx = (ai.aiEscapeDir || (dx >= 0 ? 1 : -1)) * ai.speed;
+    if (ai.grounded && !ai.jumpDisabled && Math.abs(centerY(readOpp) - centerY(ai)) > 80 && ai.aiEscapeTimer % 12 === 0) {
+      beginAiJump(ai, ai.aiEscapeDir || (dx >= 0 ? 1 : -1));
+    }
+    return;
+  }
+
   if (ai.grayHammerTimer > 0) {
     stopDefense(ai);
-    if (abs > 90) moveToward(ai, opp, 0.75);
-    else if (abs < 55) moveAway(ai, opp, 0.45);
+    if (abs > 90) moveToward(ai, readOpp, 0.75);
+    else if (abs < 55) moveAway(ai, readOpp, 0.45);
     return;
   }
 
@@ -4296,13 +4771,13 @@ const updateAI = (ai) => {
 
   if (ai.charging && ai.type === "void") {
     stopDefense(ai);
-    faceTarget(ai, opp);
+    faceTarget(ai, readOpp);
 
     const shouldRelease =
       ai.chargeFrames >= getAiSettings(ai).chargeMinFrames &&
       sameLane &&
       abs < 560 &&
-      (targetVulnerable || abs < 260 || opp.blocking);
+      (targetVulnerable || abs < 260 || readOpp.blocking);
 
     const mustRelease =
       ai.chargeFrames >= getAiSettings(ai).chargeMaxFrames ||
@@ -4313,8 +4788,8 @@ const updateAI = (ai) => {
       return;
     }
 
-    if (abs < 170) moveAway(ai, opp, 0.65);
-    else if (abs > 390) moveToward(ai, opp, 0.45);
+    if (abs < 170) moveAway(ai, readOpp, 0.65);
+    else if (abs > 390) moveToward(ai, readOpp, 0.45);
     else ai.vx = 0;
 
     return;
@@ -4343,18 +4818,16 @@ const updateAI = (ai) => {
 
   stopDefense(ai);
 
-  const incoming = getIncomingProjectile(ai);
-  if (incoming && ai.type === "electric" && ai.canSpecial2 && !ai.specialDisabled && rand() < getAiSettings(ai).projectileBlockChance + 0.2) {
+  if (incoming && ai.type === "electric" && ai.canSpecial2 && !ai.specialDisabled && rand() < defenseChance(settings.projectileBlockChance + 0.2)) {
     if (beginYellowReflect(ai)) return;
   }
 
-  if (incoming && rand() < getAiSettings(ai).projectileBlockChance) {
+  if ((ai.aiDefenseCooldown || 0) <= 0 && incoming && rand() < defenseChance(settings.projectileBlockChance)) {
     if (incoming.type === "poisonorb") {
-      if (!ai.ducking && ai.grounded && !ai.jumpDisabled && rand() < getAiSettings(ai).jumpChance) {
-        ai.vy = ai.jumpPower;
-        ai.grounded = false;
+      if (!ai.ducking && ai.grounded && !ai.jumpDisabled && rand() < defenseChance(settings.jumpChance)) {
+        beginAiJump(ai, dx >= 0 ? -1 : 1);
       }
-      moveAway(ai, opp, 1.15);
+      moveAway(ai, readOpp, 1.15);
       return;
     }
 
@@ -4362,66 +4835,85 @@ const updateAI = (ai) => {
     return;
   }
 
-  if (chaseOpponentLevel(ai, opp)) return;
+  if (tryAiEscapeStuck(ai, readOpp, sameLane, incoming)) return;
 
-  faceTarget(ai, opp);
+  if (chaseOpponentLevel(ai, readOpp)) return;
 
-  if (ai.type === "pink" && ai.canSpecial2 && !ai.specialDisabled && sameLane && opp.attacking && abs < 150 && rand() < getAiSettings(ai).blockChance + 0.18) {
-    ai.ducking = ["low", "mid", "unblockable"].includes(opp.attackHeight || "mid");
+  faceTarget(ai, readOpp);
+
+  if (ai.type === "pink" && ai.canSpecial2 && !ai.specialDisabled && sameLane && readOpp.attacking && abs < 150 && rand() < defenseChance(settings.blockChance + 0.18)) {
+    ai.ducking = ["low", "mid", "unblockable"].includes(readOpp.attackHeight || "mid");
     if (beginPinkParry(ai)) return;
   }
 
-  if (ai.aiBlockHoldTimer > 0 && !ai.blockDisabled) {
+  if ((ai.aiDefenseCooldown || 0) <= 0 && ai.aiBlockHoldTimer > 0 && !ai.blockDisabled && (ai.aiDefenseTimer || 0) < settings.maxDefenseHold) {
   const pressureAttackHeight =
     incoming?.attackHeight ||
-    opp.attackHeight ||
-    (opp.ducking ? "low" : "mid");
+    readOpp.attackHeight ||
+    (readOpp.ducking ? "low" : "mid");
 
-  if (incoming || (sameLane && (abs < 145 || opp.attacking))) {
+  if (incoming || (sameLane && (abs < 145 || readOpp.attacking))) {
     smartBlock(ai, pressureAttackHeight === "low" ? "low" : "mid");
+    ai.aiDefenseTimer = (ai.aiDefenseTimer || 0) + 1;
+    if (ai.aiDefenseTimer >= settings.maxDefenseHold) {
+      stopDefense(ai);
+      ai.aiDefenseTimer = 0;
+      ai.aiDefenseCooldown = Math.max(8, settings.reactionTime * 2);
+    }
     return;
   }
 }
 
-  if (sameLane && opp.attacking && abs < 135 && rand() < getAiSettings(ai).blockChance) {
-  const h = opp.attackHeight || "mid";
+  if ((ai.aiDefenseCooldown || 0) <= 0 && sameLane && readOpp.attacking && abs < 135 && (ai.aiDefenseTimer || 0) < settings.maxDefenseHold && rand() < defenseChance(settings.blockChance)) {
+  const h = readOpp.attackHeight || "mid";
   smartBlock(ai, h === "low" ? "low" : "mid");
+  ai.aiDefenseTimer = (ai.aiDefenseTimer || 0) + 1;
+  if (ai.aiDefenseTimer >= settings.maxDefenseHold) {
+    stopDefense(ai);
+    ai.aiDefenseTimer = 0;
+    ai.aiDefenseCooldown = Math.max(8, settings.reactionTime * 2);
+  }
   return;
 }
 
-if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChance * 0.75) {
+if ((ai.aiDefenseCooldown || 0) <= 0 && sameLane && readOpp.ducking && abs < 115 && (ai.aiDefenseTimer || 0) < settings.maxDefenseHold && rand() < defenseChance(settings.blockChance * 0.75)) {
   smartBlock(ai, "low");
+  ai.aiDefenseTimer = (ai.aiDefenseTimer || 0) + 1;
   return;
 }
+
+  if (!ai.blocking) ai.aiDefenseTimer = Math.max(0, (ai.aiDefenseTimer || 0) - 2);
 
   ai.aiTimer++;
   if (ai.aiTimer < getAiSettings(ai).reactionTime) {
-    if (abs > tactic.spacing + 40) moveToward(ai, opp, 0.75);
-    else if (abs < 55) moveAway(ai, opp, 0.65);
+    if (abs > tactic.spacing + 40) moveToward(ai, readOpp, 0.75);
+    else if (abs < 55) moveAway(ai, readOpp, 0.65);
     else ai.vx *= 0.75;
 
     return;
   }
   ai.aiTimer = 0;
 
-  if (rand() < getAiSettings(ai).mistakeChance) {
+  if (rand() < settings.mistakeChance) {
     if (targetStill) {
-      moveToward(ai, opp, 1.1);
+      moveToward(ai, readOpp, 1.1);
       return;
     }
-    if (abs > tactic.spacing) moveToward(ai, opp, 0.7);
-    else if (abs < 70) moveAway(ai, opp, 0.55);
+    if (abs > tactic.spacing) moveToward(ai, readOpp, 0.7);
+    else if (abs < 70) moveAway(ai, readOpp, 0.55);
     else ai.vx = 0;
     return;
   }
 
-  if (opp.frozen) {
+  if (tryAiAbility(ai, readOpp, sameLane, incoming)) return;
+
+  if (readOpp.frozen) {
     if (abs > 72) {
-      moveToward(ai, opp, 1.2);
+      moveToward(ai, readOpp, 1.2);
       return;
     }
 
-    chooseCloseAttack(ai, opp);
+    chooseCloseAttack(ai, readOpp);
     return;
   }
 
@@ -4429,7 +4921,7 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     ai.type === "rainbow" &&
     ai.canProjectile &&
     !ai.specialDisabled &&
-    rand() < tactic.specialChance
+    rand() < offenseChance(tactic.specialChance)
   ) {
     if (beginRainbowTurret(ai)) return;
   }
@@ -4439,7 +4931,7 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     ai.canSpecial2 &&
     !ai.specialDisabled &&
     !getActiveRainbowSummon(ai) &&
-    rand() < tactic.specialChance
+    rand() < offenseChance(tactic.specialChance)
   ) {
     if (beginRainbowSummon(ai)) return;
   }
@@ -4449,7 +4941,7 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     ai.canSpecial2 &&
     !ai.specialDisabled &&
     abs < 640 &&
-    rand() < tactic.specialChance
+    rand() < offenseChance(tactic.specialChance)
   ) {
     if (beginMonochromeWave(ai)) return;
   }
@@ -4459,7 +4951,7 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     ai.canSpecial2 &&
     !ai.specialDisabled &&
     abs < 520 &&
-    rand() < tactic.specialChance
+    rand() < offenseChance(tactic.specialChance)
   ) {
     if (beginTransparentPound(ai)) return;
   }
@@ -4470,7 +4962,7 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     !ai.specialDisabled &&
     sameLane &&
     abs < 120 &&
-    rand() < tactic.specialChance
+    rand() < offenseChance(tactic.specialChance)
   ) {
     if (beginGrayHammer(ai)) return;
   }
@@ -4481,7 +4973,7 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     !ai.specialDisabled &&
     sameLane &&
     abs < tactic.meleeRange + 12 &&
-    rand() < getAiSettings(ai).blockChance
+    rand() < defenseChance(settings.blockChance)
   ) {
     if (beginPinkParry(ai)) return;
   }
@@ -4492,7 +4984,7 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     !ai.specialDisabled &&
     ai.brownInvulnTimer <= 0 &&
     abs < 260 &&
-    rand() < tactic.specialChance
+    rand() < offenseChance(tactic.specialChance)
   ) {
     if (beginBrownArmorCharge(ai)) return;
   }
@@ -4504,7 +4996,7 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     ai.speedBoostTimer <= 0 &&
     abs > 160 &&
     !incoming &&
-    rand() < tactic.specialChance
+    rand() < offenseChance(tactic.specialChance)
   ) {
     if (beginPurplePowerUp(ai)) return;
   }
@@ -4516,8 +5008,8 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     sameLane &&
     abs > 120 &&
     abs < 440 &&
-    rand() < tactic.specialChance &&
-    (targetVulnerable || opp.damageAmpTimer <= 0 || abs > 220)
+    rand() < offenseChance(tactic.specialChance) &&
+    (targetVulnerable || readOpp.damageAmpTimer <= 0 || abs > 220)
   ) {
     if (beginProjectile(ai)) return;
   }
@@ -4529,8 +5021,8 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     sameLane &&
     abs > 140 &&
     abs < 520 &&
-    rand() < tactic.specialChance &&
-    (targetVulnerable || !opp.grounded || abs > 230)
+    rand() < offenseChance(tactic.specialChance) &&
+    (targetVulnerable || !readOpp.grounded || abs > 230)
   ) {
     if (beginProjectile(ai)) return;
   }
@@ -4542,7 +5034,7 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     sameLane &&
     abs > 100 &&
     abs < 430 &&
-    rand() < tactic.specialChance &&
+    rand() < offenseChance(tactic.specialChance) &&
     (targetVulnerable || ai.cooldownBoostTimer <= 0 || abs > 190)
   ) {
     if (beginOrangeCooldownBoost(ai)) return;
@@ -4555,7 +5047,7 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     sameLane &&
     abs > 115 &&
     abs < 430 &&
-    rand() < tactic.specialChance
+    rand() < offenseChance(tactic.specialChance)
   ) {
     if (beginProjectile(ai)) return;
   }
@@ -4565,10 +5057,10 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     ai.canSpecial2 &&
     !ai.specialDisabled &&
     abs < 560 &&
-    rand() < tactic.specialChance &&
-    (targetVulnerable || opp.blocking || abs < 250 || !opp.grounded)
+    rand() < offenseChance(tactic.specialChance) &&
+    (targetVulnerable || readOpp.blocking || abs < 250 || !readOpp.grounded)
   ) {
-    if (beginWhiteDrop(ai, opp)) return;
+    if (beginWhiteDrop(ai, readOpp)) return;
   }
 
   if (
@@ -4578,8 +5070,8 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     sameLane &&
     abs > 90 &&
     abs < 430 &&
-    rand() < tactic.specialChance &&
-    (targetVulnerable || (opp.blocking && !opp.ducking) || abs > 190)
+    rand() < offenseChance(tactic.specialChance) &&
+    (targetVulnerable || (readOpp.blocking && !readOpp.ducking) || abs > 190)
   ) {
     if (beginProjectile(ai)) return;
   }
@@ -4589,7 +5081,7 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     ai.health <= getAiSettings(ai).healHealth &&
     abs > getAiSettings(ai).healSafeDistance &&
     !incoming &&
-    rand() < tactic.specialChance
+    rand() < offenseChance(tactic.specialChance)
   ) {
     if (beginPoisonHeal(ai)) return;
   }
@@ -4601,8 +5093,8 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     sameLane &&
     abs > 145 &&
     abs < 520 &&
-    rand() < tactic.specialChance &&
-    (targetVulnerable || opp.blocking || abs > 260)
+    rand() < offenseChance(tactic.specialChance) &&
+    (targetVulnerable || readOpp.blocking || abs > 260)
   ) {
     if (beginVoidCharge(ai)) return;
   }
@@ -4614,8 +5106,8 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     sameLane &&
     abs > 100 &&
     abs < 430 &&
-    rand() < tactic.specialChance &&
-    (targetVulnerable || opp.blocking || abs > 190)
+    rand() < offenseChance(tactic.specialChance) &&
+    (targetVulnerable || readOpp.blocking || abs > 190)
   ) {
     if (beginIceSlowOrb(ai)) return;
   }
@@ -4627,7 +5119,7 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     sameLane &&
     abs > 95 &&
     abs < 310 &&
-    rand() < tactic.specialChance &&
+    rand() < offenseChance(tactic.specialChance) &&
     (targetVulnerable || aiCornered || abs > 180)
   ) {
     if (beginRedDash(ai)) return;
@@ -4635,13 +5127,13 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
 
   if (
     (ai.type === "void" || ai.type === "ice") &&
-    (opp.blockDisabled || opp.jumpDisabled) &&
+    (readOpp.blockDisabled || readOpp.jumpDisabled) &&
     sameLane &&
     abs > 70 &&
     abs < 290
   ) {
-    moveToward(ai, opp, 1.25);
-    if (abs < tactic.meleeRange) chooseCloseAttack(ai, opp);
+    moveToward(ai, readOpp, 1.25);
+    if (abs < tactic.meleeRange) chooseCloseAttack(ai, readOpp);
     return;
   }
 
@@ -4656,11 +5148,11 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
   }
 
   if (sameLane && abs <= tactic.meleeRange) {
-    chooseCloseAttack(ai, opp);
+    chooseCloseAttack(ai, readOpp);
     return;
   }
 
-  if (sameLane && !opp.grounded && abs < 115) {
+  if (sameLane && !readOpp.grounded && abs < 115) {
     if (beginMelee(ai, "uppercut")) return;
   }
 
@@ -4671,23 +5163,23 @@ if (sameLane && opp.ducking && abs < 115 && rand() < getAiSettings(ai).blockChan
     sameLane &&
     abs > 115 &&
     abs < 260 &&
-    rand() < getAiSettings(ai).jumpChance
+    rand() < settings.jumpChance
   ) {
-    ai.vy = ai.jumpPower;
-    ai.grounded = false;
-    moveToward(ai, opp, 0.85);
+    beginAiJump(ai, dx >= 0 ? 1 : -1);
+    moveToward(ai, readOpp, 0.85);
     return;
   }
 
   if (abs > tactic.spacing) {
-    moveToward(ai, opp, tactic.aggression);
+    moveToward(ai, readOpp, tactic.aggression);
   } else if (abs < 58) {
-    moveAway(ai, opp, 0.85);
+    moveAway(ai, readOpp, 0.85);
   } else {
     ai.vx *= 0.72;
 
-    if (rand() < getAiSettings(ai).blockChance * 0.18) {
+    if ((ai.aiDefenseCooldown || 0) <= 0 && (ai.aiDefenseTimer || 0) < settings.maxDefenseHold && rand() < defenseChance(settings.blockChance * 0.18)) {
       smartBlock(ai, "mid");
+      ai.aiDefenseTimer = (ai.aiDefenseTimer || 0) + 1;
     }
   }
 };
@@ -6629,13 +7121,15 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
         for (let i = projectiles.current.length - 1; i >= 0; i--) {
           const proj = projectiles.current[i];
           if (proj.trackXOnly && proj.owner?.alive) {
-            const target = getNearestEnemy(proj.owner);
+            const realTarget = getNearestEnemy(proj.owner);
+            const target = !proj.owner.isHuman && realTarget ? getAiPerceivedTarget(proj.owner, realTarget) : realTarget;
             if (target) {
               const targetX = target.x + target.width / 2;
               proj.x += (targetX - proj.x) * 0.18;
             }
           } else if (proj.homing && proj.owner?.alive) {
-            const target = getNearestEnemy(proj.owner);
+            const realTarget = getNearestEnemy(proj.owner);
+            const target = !proj.owner.isHuman && realTarget ? getAiPerceivedTarget(proj.owner, realTarget) : realTarget;
             if (target) {
               const dx = target.x + target.width / 2 - proj.x;
               const dy = target.y + target.height / 2 - proj.y;
