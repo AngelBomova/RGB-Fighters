@@ -1895,21 +1895,22 @@ const toggleFullscreen = async () => {
 
     const difficultySettings = {
       easy: {
-        reactionTime: 32,
+        reactionTime: 28,
         observationJitter: 14,
         defenseReaction: 12,
-        attackChance: 0.42,
+        attackChance: 0.56,
         blockChance: 0.32,
         projectileBlockChance: 0.58,
-        specialChance: 0.12,
-        punishChance: 0.3,
+        specialChance: 0.16,
+        punishChance: 0.34,
         antiAirChance: 0.3,
         jumpChance: 0.14,
         accuracy: 0.62,
-        aggression: 0.54,
-        mistakeChance: 0.32,
-        spacing: 112,
-        meleeRange: 82,
+        aggression: 0.64,
+        mistakeChance: 0.27,
+        spacing: 104,
+        meleeRange: 86,
+        retreatRange: 52,
         projectileRange: 235,
         projectileReactRange: 240,
         healHealth: 52,
@@ -1926,29 +1927,30 @@ const toggleFullscreen = async () => {
         defenseBias: 0.66,
         maxDefenseHold: 30,
         maxLockFrames: 150,
-        attackCooldown: 28,
-        specialCooldown: 90,
+        attackCooldown: 24,
+        specialCooldown: 82,
         blockCooldown: 42,
         jumpCooldown: 76,
-        movementCommit: 38,
+        movementCommit: 32,
         maxRepeat: 2,
       },
       medium: {
-        reactionTime: 17,
+        reactionTime: 14,
         observationJitter: 8,
         defenseReaction: 7,
-        attackChance: 0.7,
+        attackChance: 0.78,
         blockChance: 0.58,
         projectileBlockChance: 0.76,
-        specialChance: 0.34,
-        punishChance: 0.62,
+        specialChance: 0.4,
+        punishChance: 0.68,
         antiAirChance: 0.62,
         jumpChance: 0.28,
         accuracy: 0.82,
-        aggression: 0.78,
-        mistakeChance: 0.14,
-        spacing: 96,
-        meleeRange: 88,
+        aggression: 0.88,
+        mistakeChance: 0.1,
+        spacing: 90,
+        meleeRange: 92,
+        retreatRange: 46,
         projectileRange: 170,
         projectileReactRange: 310,
         healHealth: 68,
@@ -1965,29 +1967,30 @@ const toggleFullscreen = async () => {
         defenseBias: 0.86,
         maxDefenseHold: 44,
         maxLockFrames: 130,
-        attackCooldown: 17,
-        specialCooldown: 58,
+        attackCooldown: 14,
+        specialCooldown: 52,
         blockCooldown: 28,
         jumpCooldown: 52,
-        movementCommit: 28,
+        movementCommit: 22,
         maxRepeat: 3,
       },
       hard: {
-        reactionTime: 9,
+        reactionTime: 7,
         observationJitter: 4,
         defenseReaction: 4,
-        attackChance: 0.86,
+        attackChance: 0.94,
         blockChance: 0.76,
         projectileBlockChance: 0.88,
-        specialChance: 0.55,
-        punishChance: 0.84,
+        specialChance: 0.62,
+        punishChance: 0.9,
         antiAirChance: 0.84,
         jumpChance: 0.4,
         accuracy: 0.94,
-        aggression: 0.96,
-        mistakeChance: 0.06,
-        spacing: 84,
-        meleeRange: 94,
+        aggression: 1.08,
+        mistakeChance: 0.035,
+        spacing: 76,
+        meleeRange: 98,
+        retreatRange: 40,
         projectileRange: 132,
         projectileReactRange: 380,
         healHealth: 80,
@@ -2004,11 +2007,11 @@ const toggleFullscreen = async () => {
         defenseBias: 0.98,
         maxDefenseHold: 54,
         maxLockFrames: 110,
-        attackCooldown: 11,
-        specialCooldown: 40,
+        attackCooldown: 8,
+        specialCooldown: 34,
         blockCooldown: 19,
         jumpCooldown: 38,
-        movementCommit: 20,
+        movementCommit: 14,
         maxRepeat: 3,
       },
     };
@@ -5490,7 +5493,7 @@ const updateAI = (ai) => {
     }
     if (!followAiMovementIntent(ai, readOpp, tactic)) {
       if (abs > tactic.spacing + 42) moveToward(ai, readOpp, 0.72);
-      else if (abs < 54) moveAway(ai, readOpp, 0.62);
+      else if (abs < settings.retreatRange) moveAway(ai, readOpp, 0.62);
       else ai.vx *= 0.72;
     }
     return;
@@ -5500,6 +5503,9 @@ const updateAI = (ai) => {
   ai.aiTimer = -Math.round(rand() * settings.observationJitter * 0.45);
 
   const read = ai.aiRead || {};
+  const canStartCloseOffense =
+    sameLane &&
+    abs <= tactic.meleeRange + 8;
   const expectsPressure =
     (ai.aiBlockHoldTimer || 0) > 0 ||
     (read.rush || 0) > 4 ||
@@ -5517,6 +5523,7 @@ const updateAI = (ai) => {
 
   if (
     !ai.aiVerticalHold &&
+    !canStartCloseOffense &&
     (ai.aiActionTimer || 0) > 0 &&
     ["approach", "pressure", "retreat", "hold"].includes(ai.aiAction) &&
     followAiMovementIntent(ai, readOpp, tactic)
@@ -5604,7 +5611,7 @@ const updateAI = (ai) => {
   if (abs > tactic.spacing + 12) {
     setAiMovementIntent(ai, "approach");
     moveToward(ai, readOpp, tactic.aggression);
-  } else if (abs < 58 || ((read.rush || 0) > 9 && !aiCornered)) {
+  } else if (abs < settings.retreatRange || ((read.rush || 0) > 9 && !aiCornered)) {
     setAiMovementIntent(ai, "retreat");
     moveAway(ai, readOpp, 0.8);
   } else {
@@ -8737,7 +8744,7 @@ useEffect(() => {
               { key: "offline", title: "1v1 Offline", desc: "Local PvP (P1 vs P2)" },
               { key: "online", title: "1v1 Online", desc: "Play against real players online" },
               // { key: "online2v2", title: "2v2 Online", desc: "Invite a friend and queue as a team" },
-              // { key: "friends", title: "Friends List", desc: "Requests, friends, and private invites" },
+                //  { key: "friends", title: "Friends List", desc: "Requests, friends, and private invites" },
               { key: "achievements", title: "Achievements", desc: "Collect them all" },
             ].map((m) => {
               const disabled = false;
