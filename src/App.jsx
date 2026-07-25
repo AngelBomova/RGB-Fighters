@@ -2829,7 +2829,7 @@ const toggleFullscreen = async () => {
           hitstunFrames = 10;
           break;
         case "graywind":
-          damage = 5;
+          damage = 8;
           knockback = 34;
           hitstunFrames = 16;
           break;
@@ -2845,7 +2845,7 @@ const toggleFullscreen = async () => {
           hitstunFrames = 18;
           break;
         case "transparentpound":
-          damage = 6;
+          damage = 9;
           knockback = 0;
           hitstunFrames = 8;
           freezeFrames = 180;
@@ -2867,7 +2867,7 @@ const toggleFullscreen = async () => {
           hitstunFrames = 12;
           break;
         case "whitedrop":
-          damage = 7;
+          damage = 8;
           knockback = 8;
           launchUp = true;
           hitstunFrames = 18;
