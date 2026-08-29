@@ -2887,7 +2887,7 @@ const toggleFullscreen = async () => {
           hitstunFrames = 12;
           break;
         case "orangeball":
-          damage = 5;
+          damage = 6;
           knockback = 6;
           hitstunFrames = 10;
           break;
@@ -3726,7 +3726,7 @@ const beginProjectile = (ai) => {
         radius: 8,
         });
       });
-      cooldown = 5000;
+      cooldown = 2000;
       playSfx("orange_triple");
     } else if (ai.type === "ice") {
       projectiles.current.push({
@@ -6590,7 +6590,7 @@ if (hpW > 0) {
               projectiles.current.push({ x: projX + p.facing * (offset + 18), y: projY, vx: p.facing * 11, owner: p, team: p.team, type: "orangeball", attackHeight: "high", color: "#f97316", radius: 8 });
             });
             playSfx("orange_triple");
-            cooldown = 5000;
+            cooldown = 2000;
           } else if (p.type === "ice") {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 7, owner: p, team: p.team, type: "iceball", attackHeight: "high", color: "#60a5fa", radius: 8 });
             playSfx("iceball");
