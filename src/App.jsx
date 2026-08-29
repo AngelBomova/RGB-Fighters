@@ -1485,6 +1485,7 @@ const toggleFullscreen = async () => {
         yellowWaveChargeTimer: p.yellowWaveChargeTimer,
         yellowWaveTargetX: p.yellowWaveTargetX,
         shotgunVisualTimer: p.shotgunVisualTimer,
+        shotgunVisualDownward: p.shotgunVisualDownward,
         harpoonTargetId: p.harpoonTargetId,
         harpoonPullTimer: p.harpoonPullTimer,
         grayPeakId: p.grayPeakId,
@@ -2200,6 +2201,7 @@ const toggleFullscreen = async () => {
         yellowWaveChargeTimer: 0,
         yellowWaveTargetX: 0,
         shotgunVisualTimer: 0,
+        shotgunVisualDownward: false,
         harpoonTargetId: null,
         harpoonPullTimer: 0,
         harpoonCooldownPending: false,
@@ -2582,6 +2584,7 @@ const toggleFullscreen = async () => {
           p.yellowWaveChargeTimer = 0;
           p.yellowWaveTargetX = 0;
           p.shotgunVisualTimer = 0;
+          p.shotgunVisualDownward = false;
           p.harpoonTargetId = null;
           p.harpoonPullTimer = 0;
           p.grayPeakId = null;
@@ -3838,6 +3841,7 @@ const fireShotgun = (fighter, downward = false) => {
     });
   });
   fighter.shotgunVisualTimer = 18;
+  fighter.shotgunVisualDownward = downward;
   playSfx("orange_triple");
 };
 
@@ -3976,7 +3980,7 @@ const beginSpecial3 = (fighter, targetOverride = null) => {
   }
 
   if (fighter.type === "ice") {
-    projectiles.current.push({ x: centerX(fighter), y: centerY(fighter), vx: fighter.facing * 10, vy: 0, owner: fighter, team: fighter.team, type: "snowflake", attackHeight: "high", color: "#93c5fd", radius: 11 });
+    projectiles.current.push({ x: centerX(fighter), y: centerY(fighter), vx: fighter.facing * 10, vy: 0, owner: fighter, team: fighter.team, type: "snowflake", attackHeight: "high", color: "#dbeafe", radius: 15 });
     startSpecial3Cooldown(fighter, 500);
     playSfx("iceball");
     return true;
@@ -6733,6 +6737,7 @@ if (hpW > 0) {
         p.yellowWaveChargeTimer = 0;
         p.yellowWaveTargetX = 0;
         p.shotgunVisualTimer = 0;
+        p.shotgunVisualDownward = false;
         p.harpoonTargetId = null;
         p.harpoonPullTimer = 0;
         p.grayPeakId = null;
@@ -6855,6 +6860,7 @@ if (hpW > 0) {
         p.yellowWaveChargeTimer = 0;
         p.yellowWaveTargetX = 0;
         p.shotgunVisualTimer = 0;
+        p.shotgunVisualDownward = false;
         p.harpoonTargetId = null;
         p.harpoonPullTimer = 0;
         p.grayPeakId = null;
@@ -7149,6 +7155,7 @@ if (hpW > 0) {
         }
 
         if (p.dashTimer > 0) {
+          p.ducking = false;
           p.vx = p.facing * 12;
           p.dashTimer--;
         }
@@ -7548,7 +7555,8 @@ if (hpW > 0) {
             attackHeight: "low",
             color: "rgba(250,204,21,0.9)",
             radius: 20,
-            trackXOnly: true,
+            width: 44,
+            height: 92,
             knockbackDir: p.yellowWaveTargetX >= centerX(p) ? 1 : -1,
           });
           playSfx("yellow_spear");
@@ -8001,8 +8009,20 @@ if (p.aiBlockHoldTimer > 0) {
       }
 
       if (proj.type === "snowflake") {
-        ctx.strokeStyle = "#bfdbfe";
-        ctx.lineWidth = 3;
+        ctx.fillStyle = "rgba(96,165,250,0.22)";
+        ctx.beginPath();
+        ctx.arc(proj.x, proj.y, proj.radius + 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#0f172a";
+        ctx.lineWidth = 7;
+        for (let angle = 0; angle < Math.PI; angle += Math.PI / 3) {
+          ctx.beginPath();
+          ctx.moveTo(proj.x - Math.cos(angle) * proj.radius, proj.y - Math.sin(angle) * proj.radius);
+          ctx.lineTo(proj.x + Math.cos(angle) * proj.radius, proj.y + Math.sin(angle) * proj.radius);
+          ctx.stroke();
+        }
+        ctx.strokeStyle = "#dbeafe";
+        ctx.lineWidth = 4;
         for (let angle = 0; angle < Math.PI; angle += Math.PI / 3) {
           ctx.beginPath();
           ctx.moveTo(proj.x - Math.cos(angle) * proj.radius, proj.y - Math.sin(angle) * proj.radius);
@@ -8014,13 +8034,17 @@ if (p.aiBlockHoldTimer > 0) {
       }
 
       if (proj.type === "yellowwave") {
-        ctx.fillStyle = "rgba(250,204,21,0.7)";
-        ctx.beginPath();
-        ctx.ellipse(proj.x, proj.y, 20, 34, 0, 0, Math.PI * 2);
-        ctx.fill();
+        const waveWidth = proj.width || 44;
+        const waveHeight = proj.height || 92;
+        const gradient = ctx.createLinearGradient(proj.x, proj.y - waveHeight, proj.x, proj.y);
+        gradient.addColorStop(0, "rgba(254,240,138,0.12)");
+        gradient.addColorStop(0.45, "rgba(250,204,21,0.76)");
+        gradient.addColorStop(1, "rgba(202,138,4,0.95)");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(proj.x - waveWidth / 2, proj.y - waveHeight, waveWidth, waveHeight);
         ctx.strokeStyle = "#a16207";
         ctx.lineWidth = 3;
-        ctx.stroke();
+        ctx.strokeRect(proj.x - waveWidth / 2, proj.y - waveHeight, waveWidth, waveHeight);
         ctx.restore();
         return;
       }
@@ -8174,6 +8198,7 @@ if (p.aiBlockHoldTimer > 0) {
       ctx.strokeStyle =
         proj.type === "whiteball" ||
         proj.type === "whitedrop" ||
+        proj.type === "tripleball" ||
         proj.type === "purpleball" ||
         proj.type === "orangeball" ||
         proj.type === "orangeorb"
@@ -8182,6 +8207,7 @@ if (p.aiBlockHoldTimer > 0) {
       ctx.lineWidth =
         proj.type === "whiteball" ||
         proj.type === "whitedrop" ||
+        proj.type === "tripleball" ||
         proj.type === "purpleball" ||
         proj.type === "orangeball" ||
         proj.type === "orangeorb"
@@ -8201,12 +8227,16 @@ if (p.aiBlockHoldTimer > 0) {
       const drawY = p.ducking ? p.y + p.height * 0.4 : p.y;
 
       if (p.pinkTeleportMarker) {
-        ctx.globalAlpha = 0.28;
-        ctx.fillStyle = "#ec4899";
+        ctx.globalAlpha = 0.66;
+        ctx.fillStyle = "#f9a8d4";
         ctx.fillRect(p.pinkTeleportMarker.x, p.pinkTeleportMarker.y, p.width, p.height);
-        ctx.strokeStyle = "#f9a8d4";
-        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#ec4899";
+        ctx.lineWidth = 5;
         ctx.strokeRect(p.pinkTeleportMarker.x, p.pinkTeleportMarker.y, p.width, p.height);
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(p.pinkTeleportMarker.x + 5, p.pinkTeleportMarker.y + 5, p.width - 10, p.height - 10);
         ctx.globalAlpha = 1;
       }
 
@@ -8562,12 +8592,24 @@ ctx.fillRect(p.x, drawY, p.width, drawHeight);
 if ((p.snowflakeExpiries || []).length > 0) {
   const markX = p.x + p.width / 2;
   const markY = drawY + drawHeight / 2;
-  ctx.strokeStyle = "#bfdbfe";
-  ctx.lineWidth = 2;
+  ctx.fillStyle = "rgba(96,165,250,0.22)";
+  ctx.beginPath();
+  ctx.arc(markX, markY, 18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 5;
   for (let angle = 0; angle < Math.PI; angle += Math.PI / 3) {
     ctx.beginPath();
-    ctx.moveTo(markX - Math.cos(angle) * 10, markY - Math.sin(angle) * 10);
-    ctx.lineTo(markX + Math.cos(angle) * 10, markY + Math.sin(angle) * 10);
+    ctx.moveTo(markX - Math.cos(angle) * 13, markY - Math.sin(angle) * 13);
+    ctx.lineTo(markX + Math.cos(angle) * 13, markY + Math.sin(angle) * 13);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "#bfdbfe";
+  ctx.lineWidth = 3;
+  for (let angle = 0; angle < Math.PI; angle += Math.PI / 3) {
+    ctx.beginPath();
+    ctx.moveTo(markX - Math.cos(angle) * 13, markY - Math.sin(angle) * 13);
+    ctx.lineTo(markX + Math.cos(angle) * 13, markY + Math.sin(angle) * 13);
     ctx.stroke();
   }
 }
@@ -8583,13 +8625,47 @@ if (p.brownOriginalForm) {
 }
 
 if (p.shotgunVisualTimer > 0) {
-  const gunX = p.x + (p.facing > 0 ? p.width : -18);
-  const gunY = drawY + drawHeight * 0.55;
-  ctx.fillStyle = "#7c2d12";
-  ctx.fillRect(gunX, gunY, 18, 7);
+  ctx.save();
+  const downward = !!p.shotgunVisualDownward;
+  const scale = p.facing > 0 ? 1 : -1;
+  ctx.translate(downward ? centerX(p) : p.x + (p.facing > 0 ? p.width + 5 : -5), downward ? drawY + drawHeight + 6 : drawY + drawHeight * 0.5);
+  if (downward) {
+    ctx.rotate(Math.PI / 2);
+  } else {
+    ctx.scale(scale, 1);
+  }
+  ctx.lineWidth = 3;
   ctx.strokeStyle = "#111827";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(gunX, gunY, 18, 7);
+  ctx.fillStyle = "#c2410c";
+  ctx.beginPath();
+  ctx.moveTo(-46, -11);
+  ctx.lineTo(-22, -16);
+  ctx.lineTo(-16, -9);
+  ctx.lineTo(13, -9);
+  ctx.lineTo(13, 8);
+  ctx.lineTo(-18, 8);
+  ctx.lineTo(-25, 15);
+  ctx.lineTo(-42, 13);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#f97316";
+  ctx.fillRect(-22, -14, 36, 19);
+  ctx.strokeRect(-22, -14, 36, 19);
+  ctx.fillStyle = "#475569";
+  ctx.fillRect(12, -11, 42, 7);
+  ctx.strokeRect(12, -11, 42, 7);
+  ctx.fillStyle = "#1f2937";
+  ctx.fillRect(18, 1, 32, 7);
+  ctx.strokeRect(18, 1, 32, 7);
+  ctx.fillStyle = "#ea580c";
+  for (let i = 0; i < 4; i++) ctx.fillRect(-13 + i * 6, -10, 3, 8);
+  for (let i = 0; i < 5; i++) ctx.fillRect(22 + i * 5, 1, 3, 8);
+  ctx.fillStyle = "#111827";
+  ctx.fillRect(-4, -8, 16, 8);
+  ctx.fillRect(-9, 7, 8, 18);
+  ctx.fillRect(47, -16, 8, 5);
+  ctx.restore();
 }
 
 if (p.type === "transparent") {
@@ -8936,6 +9012,26 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
             if (target.transparentBurrowing) continue;
 
             if (proj.attackHeight === "high" && target.ducking) continue;
+
+            if (proj.type === "yellowwave") {
+              const waveRect = {
+                x: proj.x - (proj.width || 44) / 2,
+                y: proj.y - (proj.height || 92),
+                width: proj.width || 44,
+                height: proj.height || 92,
+              };
+              if (!rectOverlap(waveRect, target.hurtbox)) continue;
+              applyDamage(proj.owner, target, "yellowwave", {
+                attackHeight: proj.attackHeight,
+                isProjectile: true,
+                knockbackDir: proj.knockbackDir ?? (target.x + target.width / 2 >= proj.x ? 1 : -1),
+                ignoreRainbowInvulnerable: !!proj.reflected,
+              });
+              markKOIfNeeded(target);
+              projectiles.current.splice(i, 1);
+              handledProjectile = true;
+              break;
+            }
 
             const dx = target.x + target.width / 2 - proj.x;
             const dy = target.y + target.height / 2 - proj.y;
