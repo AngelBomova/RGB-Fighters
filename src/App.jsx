@@ -3672,6 +3672,29 @@ const landBrownShift = (fighter, x) => {
   fighter.airJumpsUsed = 0;
 };
 
+const popBrownShiftOffPeak = (fighter, peak, proj) => {
+  if (!fighter) return;
+  const dir = Math.sign(proj?.vx || fighter.facing || 1);
+  fighter.brownPhasing = false;
+  fighter.x = Math.max(0, Math.min(WORLD_W - fighter.width, dir > 0 ? peak.x - fighter.width - 2 : peak.x + peak.width + 2));
+  fighter.y = Math.max(0, peak.y - fighter.height - 2);
+  fighter.vx = -dir * 3;
+  fighter.vy = -15;
+  fighter.grounded = false;
+  fighter.airJumpsUsed = 0;
+  fighter.hitstun = false;
+  fighter.hitstunTimer = 0;
+};
+
+const destroyGrayPeakAt = (index) => {
+  if (index < 0) return;
+  const peak = projectiles.current[index];
+  if (!peak || peak.type !== "graypeak") return;
+  if (peak.owner) peak.owner.grayPeakId = null;
+  projectiles.current.splice(index, 1);
+  playSfx("block");
+};
+
 const beginBrownShift = (fighter) => {
   if (!fighter.canProjectile || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging || fighter.pinkParrying || fighter.brownPhasing || fighter.brownCharging) return false;
 
@@ -3845,6 +3868,19 @@ const fireShotgun = (fighter, downward = false) => {
   playSfx("orange_triple");
 };
 
+const beginOrangeDownShotgun = (fighter) => {
+  if (!fighter.canSpecial2 || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging || fighter.blackCharging || fighter.pinkParrying || fighter.brownPhasing || fighter.brownCharging || fighter.transparentBurrowing) return false;
+  stopDefense(fighter);
+  fireShotgun(fighter, true);
+  fighter.vy = fighter.jumpPower;
+  fighter.grounded = false;
+  fighter.canSpecial2 = false;
+  setManagedTimeout(() => {
+    fighter.canSpecial2 = true;
+  }, abilityCooldown(fighter, 2000));
+  return true;
+};
+
 const explodeGreenArc = (proj, impactX, impactY, directTarget = null) => {
   fighters.filter((target) => target.alive && target.team !== proj.team).forEach((target) => {
     const dx = centerX(target) - impactX;
@@ -3957,6 +3993,8 @@ const beginSpecial3 = (fighter, targetOverride = null) => {
     return true;
   }
 
+  if (fighter.type === "explosion" && fighter.harpoonTargetId) return beginOrangeHarpoon(fighter);
+
   if (!fighter.canSpecial3 || !target) return false;
   stopDefense(fighter);
 
@@ -3964,9 +4002,23 @@ const beginSpecial3 = (fighter, targetOverride = null) => {
     const targets = fighters.filter((other) => other.alive && other.team !== fighter.team);
     fighter.special3VisualTimer = 16;
     targets.forEach((other) => {
-      const horizontal = Math.abs(centerX(other) - centerX(fighter));
-      const above = other.y + other.height <= fighter.y + 18;
-      if (horizontal <= 92 && above) {
+      const arcX = centerX(fighter);
+      const arcY = fighter.y + 4;
+      const samples = [
+        [other.x + other.width * 0.5, other.y + other.height * 0.5],
+        [other.x + other.width * 0.25, other.y + other.height * 0.3],
+        [other.x + other.width * 0.75, other.y + other.height * 0.3],
+        [other.x + other.width * 0.5, other.y + other.height * 0.1],
+      ];
+      const arcHit = samples.some(([x, y]) => {
+        const dx = x - arcX;
+        const dy = y - arcY;
+        const angle = Math.atan2(dy, dx);
+        const normalized = angle < 0 ? angle + Math.PI * 2 : angle;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        return normalized >= Math.PI * 1.08 && normalized <= Math.PI * 1.92 && distance >= 54 && distance <= 96;
+      });
+      if (arcHit) {
         applyDamage(fighter, other, "fireanti", {
           attackHeight: "unblockable",
           knockbackDir: centerX(other) < centerX(fighter) ? -1 : 1,
@@ -4050,11 +4102,7 @@ const beginSpecial3 = (fighter, targetOverride = null) => {
   }
 
   if (fighter.type === "explosion") {
-    fireShotgun(fighter, true);
-    fighter.vy = fighter.jumpPower;
-    fighter.grounded = false;
-    startSpecial3Cooldown(fighter, 2000);
-    return true;
+    return beginOrangeHarpoon(fighter);
   }
 
   if (fighter.type === "gray") {
@@ -4062,7 +4110,7 @@ const beginSpecial3 = (fighter, targetOverride = null) => {
     if (existing) return false;
     const x = Math.max(0, Math.min(WORLD_W - fighter.width, fighter.facing > 0 ? fighter.x + fighter.width * 1.5 : fighter.x - fighter.width * 1.5));
     const surfaceY = fighter.grounded ? fighter.y + fighter.height : groundLevel;
-    const peak = { id: `gray_peak_${fighter.id}_${Date.now()}`, x, y: surfaceY - fighter.height, vx: 0, vy: 0, owner: fighter, team: fighter.team, type: "graypeak", attackHeight: "low", color: "#6b7280", radius: 20, width: fighter.width, height: fighter.height, health: 16, lifeFrames: 120 };
+    const peak = { id: `gray_peak_${fighter.id}_${Date.now()}`, x, y: surfaceY - fighter.height, vx: 0, vy: 0, owner: fighter, team: fighter.team, type: "graypeak", attackHeight: "low", color: "#6b7280", radius: 20, width: fighter.width, height: fighter.height, health: 1, lifeFrames: 120 };
     projectiles.current.push(peak);
     fighter.grayPeakId = peak.id;
     const victim = fighters.find((other) => other.alive && other.team !== fighter.team && other.x < x + peak.width && other.x + other.width > x && other.y < peak.y + peak.height && other.y + other.height > peak.y);
@@ -4139,7 +4187,7 @@ const beginOrangeHarpoon = (fighter) => {
     playSfx("yellow_spear");
     return true;
   }
-  if (!fighter.canSpecial2 || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned) return false;
+  if (!fighter.canSpecial3 || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned) return false;
   projectiles.current.push({
     x: fighter.x + (fighter.facing > 0 ? fighter.width : 0),
     y: centerY(fighter),
@@ -4152,9 +4200,9 @@ const beginOrangeHarpoon = (fighter) => {
     color: "#f97316",
     radius: 7,
   });
-  fighter.canSpecial2 = false;
+  fighter.canSpecial3 = false;
   setManagedTimeout(() => {
-    fighter.canSpecial2 = true;
+    fighter.canSpecial3 = true;
   }, abilityCooldown(fighter, 3000));
   playSfx("yellow_spear");
   return true;
@@ -5688,7 +5736,7 @@ const tryAiAbility = (ai, opp, sameLane, incoming, options = {}) => {
 
   tryAbilityAction(
     `${ai.type}Special3`,
-    (ai.canSpecial3 || (ai.type === "pink" && ai.pinkTeleportMarker)) && wantsAbility(`${ai.type}Special3`, thirdMoveContext, 0.38),
+    (ai.canSpecial3 || (ai.type === "pink" && ai.pinkTeleportMarker) || (ai.type === "explosion" && ai.harpoonTargetId)) && wantsAbility(`${ai.type}Special3`, thirdMoveContext, 0.38),
     () => beginSpecial3(ai, opp)
   );
 
@@ -5791,9 +5839,9 @@ const tryAiAbility = (ai, opp, sameLane, incoming, options = {}) => {
       break;
     case "explosion":
       tryAbilityAction(
-        "explosionHarpoon",
-        (ai.canSpecial2 || ai.harpoonTargetId) && dx > 70 && wantsAbility("explosionHarpoon", ai.harpoonTargetId || targetVulnerable || dx > 190, 0.58),
-        () => beginOrangeHarpoon(ai)
+        "explosionDownShotgun",
+        ai.canSpecial2 && wantsAbility("explosionDownShotgun", targetVulnerable || read.rush > 5 || read.airborne > 4 || dx < 170, 0.5),
+        () => beginOrangeDownShotgun(ai)
       ) ||
       tryAbilityAction(
         "explosionBurst",
@@ -7240,8 +7288,8 @@ if (hpW > 0) {
         }
 
         if (special2Held && !p.specialDisabled && (p.type !== "explosion" || special2Pressed)) {
-          if (p.type === "explosion" && p.harpoonTargetId) {
-            if (beginOrangeHarpoon(p)) clearHeld("special2");
+          if (p.type === "explosion") {
+            if (beginOrangeDownShotgun(p)) clearHeld("special2");
           } else if (p.canSpecial2) {
             if (p.type === "fire") {
               p.ducking = false;
@@ -7281,8 +7329,6 @@ if (hpW > 0) {
               p.reflecting = true;
               p.reflectTimer = 2;
               playSfx("reflect");
-            } else if (p.type === "explosion") {
-              if (beginOrangeHarpoon(p)) clearHeld("special2");
             } else if (p.type === "rainbow") {
               if (beginRainbowSummon(p)) clearHeld("special2");
             } else if (p.type === "monochrome") {
@@ -8872,6 +8918,23 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
           if (!attacker.alive) continue;
           if (!attacker.attacking) continue;
 
+          const hitPeakIndex = attacker.hitbox?.width > 0
+            ? projectiles.current.findIndex((peak) => peak.type === "graypeak" && peak.lifeFrames > 0 && rectOverlap(attacker.hitbox, peak))
+            : -1;
+          if (hitPeakIndex >= 0) {
+            const wasRoll = attacker.attackType === "purpleroll";
+            destroyGrayPeakAt(hitPeakIndex);
+            attacker.attacking = false;
+            attacker.attackTimer = 0;
+            attacker.attackType = "";
+            attacker.attackHeight = "";
+            attacker.dashTimer = 0;
+            attacker.special3RollTimer = 0;
+            attacker.vx = 0;
+            if (wasRoll) attacker.ducking = false;
+            continue;
+          }
+
           if (attacker.attackType === "dash") {
             for (const defender of fighters) {
               if (!defender.alive) continue;
@@ -8989,16 +9052,16 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
             }
           }
 
-          const blockingPeakIndex = proj.passesPlatforms ? -1 : projectiles.current.findIndex((peak) => peak.type === "graypeak" && peak.team !== proj.team && peak.lifeFrames > 0 && proj.x + proj.radius >= peak.x && proj.x - proj.radius <= peak.x + peak.width && proj.y + proj.radius >= peak.y && proj.y - proj.radius <= peak.y + peak.height);
+          const blockingPeakIndex = projectiles.current.findIndex((peak) => peak.type === "graypeak" && peak.lifeFrames > 0 && proj.x + proj.radius >= peak.x && proj.x - proj.radius <= peak.x + peak.width && proj.y + proj.radius >= peak.y && proj.y - proj.radius <= peak.y + peak.height);
           if (blockingPeakIndex >= 0) {
             const peak = projectiles.current[blockingPeakIndex];
-            if (proj.type === "greenarc") explodeGreenArc(proj, proj.x, proj.y);
-            peak.health -= Math.max(2, proj.damage || (proj.type === "shotgunpellet" ? 4 : 5));
-            if (peak.health <= 0) {
-              if (peak.owner) peak.owner.grayPeakId = null;
-              projectiles.current.splice(blockingPeakIndex, 1);
-              if (blockingPeakIndex < i) i--;
+            if (proj.type === "brownshift") {
+              const phaseOwner = proj.phaseOwner || fighters.find((p) => p.id === proj.phaseOwnerId) || proj.owner;
+              popBrownShiftOffPeak(phaseOwner, peak, proj);
             }
+            if (proj.type === "greenarc") explodeGreenArc(proj, proj.x, proj.y);
+            destroyGrayPeakAt(blockingPeakIndex);
+            if (blockingPeakIndex < i) i--;
             const currentIndex = projectiles.current.indexOf(proj);
             if (currentIndex >= 0) projectiles.current.splice(currentIndex, 1);
             continue;
