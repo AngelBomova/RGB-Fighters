@@ -20,6 +20,14 @@ const RGB_SOUND_URLS = Object.fromEntries(
   })
 );
 
+const ONLINE_STAGE_CHOICES = [
+  { key: "default", name: "Classic" },
+  { key: "recursion", name: "Recursion" },
+  { key: "sky", name: "Sky" },
+  { key: "hourglass", name: "Hourglass" },
+  { key: "bottom", name: "Bottom" },
+];
+
 function FighterGame() {
   const [tailwindLoaded, setTailwindLoaded] = useState(false);
 
@@ -124,6 +132,14 @@ function FighterGame() {
   const pendingPrivateInviteRef = useRef(null);
   const pendingTeamInviteRef = useRef(null);
 
+  const sendOnlineMapVote = (stageKey, { playSound = true } = {}) => {
+    const matchId = charSelect?.matchId || (matched && matched.matchId) || (onlineMatchRef.current && onlineMatchRef.current.matchId);
+    if (!socketRef.current || !matchId || !ONLINE_STAGE_CHOICES.some((stageChoice) => stageChoice.key === stageKey)) return;
+    if (playSound) playSfx("menu_select");
+    setCharSelect((prev) => prev ? { ...prev, map: stageKey } : prev);
+    socketRef.current.emit('map:selected', { matchId, stage: stageKey });
+  };
+
   useEffect(() => {
     return () => {
       if (socketRef.current) {
@@ -152,9 +168,16 @@ function FighterGame() {
 
   useEffect(() => {
     if (!charSelect || charSelect.timeLeft > 0) return;
-    clearOnlineSession({ disconnectSocket: false, keepLobby: false });
-    setMode("home");
-    setMenuStep("idle");
+    if (!charSelect.me) {
+      clearOnlineSession({ disconnectSocket: false, keepLobby: false });
+      setMode("home");
+      setMenuStep("idle");
+      return;
+    }
+    if (!charSelect.map) {
+      const randomStage = ONLINE_STAGE_CHOICES[Math.floor(Math.random() * ONLINE_STAGE_CHOICES.length)].key;
+      sendOnlineMapVote(randomStage, { playSound: false });
+    }
   }, [charSelect?.timeLeft]);
 
   const [p1Color, setP1Color] = useState(null);
@@ -8234,30 +8257,17 @@ useEffect(() => {
     const matchId = charSelect.matchId || (matched && matched.matchId) || (onlineMatchRef.current && onlineMatchRef.current.matchId);
     const lockedSecretColor = charSelect.lockedSecretColor || getLockedSecretColor(user?.username);
     const lockedSecretName = lockedSecretColor === "monochrome" ? "Monochrome" : lockedSecretColor === "transparent" ? "Transparent" : "Rainbow";
-    const stageChoices = [
-      { key: "default", name: "Classic" },
-      { key: "recursion", name: "Recursion" },
-      { key: "sky", name: "Sky" },
-      { key: "hourglass", name: "Hourglass" },
-      { key: "bottom", name: "Bottom" },
-    ];
-    const sendMapVote = (stageKey) => {
-      if (!socketRef.current || !matchId) return;
-      playSfx("menu_select");
-      setCharSelect((prev) => prev ? { ...prev, map: stageKey } : prev);
-      socketRef.current.emit('map:selected', { matchId, stage: stageKey });
-    };
     return (
-      <div className="fixed inset-0 bg-black/10 backdrop-blur-[2px] z-50 flex items-center justify-center">
-        <div className="bg-white/95 rounded-2xl p-6 max-w-4xl w-full mx-4 shadow-2xl">
+      <div className="fixed inset-0 bg-black/10 backdrop-blur-[2px] z-50 flex items-start justify-center overflow-y-auto px-3 py-3 sm:py-6">
+        <div className="bg-white/95 rounded-2xl p-4 sm:p-6 max-w-4xl w-full mx-auto shadow-2xl">
           <h3 className="text-xl mb-3">Character Select — {Math.ceil((charSelect.timeLeft || 20000) / 1000)}s</h3>
           {lockedSecretColor ? (
-            <div className="rounded-3xl border border-gray-300 bg-gray-50 p-8 text-center">
+            <div className="rounded-3xl border border-gray-300 bg-gray-50 p-5 sm:p-8 text-center">
               <div className="text-3xl font-light text-gray-900 mb-2">{lockedSecretName} selected</div>
               <div className="text-sm text-gray-600 font-light">This username is locked into the secret {lockedSecretName} fighter.</div>
             </div>
           ) : (
-          <div className="grid grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
             {ONLINE_FIGHTER_COLORS.map((c) => {
               const locked = !canUseColor(c);
               return (
@@ -8288,11 +8298,11 @@ useEffect(() => {
           )}
           <div className="mt-5">
             <div className="text-sm text-gray-600 mb-2">Map Vote — required</div>
-            <div className="grid grid-cols-5 gap-2">
-              {stageChoices.map((stageChoice) => (
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {ONLINE_STAGE_CHOICES.map((stageChoice) => (
                 <button
                   key={stageChoice.key}
-                  onClick={() => sendMapVote(stageChoice.key)}
+                  onClick={() => sendOnlineMapVote(stageChoice.key)}
                   className={`rounded-xl border px-3 py-3 text-sm transition ${
                     charSelect.map === stageChoice.key
                       ? "bg-gray-900 text-white border-gray-900"

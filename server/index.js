@@ -442,9 +442,15 @@ io.on('connection', (socket) => {
       const current = activeMatches.get(matchId);
       if (!current || current.started) return;
 
+      if (current.p1Ready && !current.p1Map) current.p1Map = randomStage();
+      if (current.p2Ready && !current.p2Map) current.p2Map = randomStage();
+
       const p1Ready = !!current.p1Ready && !!current.p1Map;
       const p2Ready = !!current.p2Ready && !!current.p2Map;
-      if (p1Ready && p2Ready) return;
+      if (p1Ready && p2Ready) {
+        maybeStartMatch(matchId);
+        return;
+      }
 
       if (current.private) {
         emitToMatch(current, 'char:forfeit', { reason: 'private-timeout' });
