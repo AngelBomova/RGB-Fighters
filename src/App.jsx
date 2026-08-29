@@ -2910,7 +2910,7 @@ const toggleFullscreen = async () => {
           hitstunFrames = 12;
           break;
         case "orangeball":
-          damage = 6;
+          damage = 5;
           knockback = 6;
           hitstunFrames = 10;
           break;
@@ -2949,7 +2949,7 @@ const toggleFullscreen = async () => {
           break;
         case "grayhammer":
           damage = 4;
-          knockback = 12;
+          knockback = 20;
           hitstunFrames = 14;
           break;
         case "transparentrise":
