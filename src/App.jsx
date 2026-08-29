@@ -306,6 +306,7 @@ const toggleFullscreen = async () => {
     kick: "o",
     special1: "k",
     special2: "l",
+    special3: ";",
   };
   const DEFAULT_P2 = {
     moveLeft: "",
@@ -317,17 +318,19 @@ const toggleFullscreen = async () => {
     kick: "",
     special1: "",
     special2: "",
+    special3: "",
   };
   const DEFAULT_P1_CONTROLLER = {
-    moveLeft: "xbox:left-stick-left",
-    moveRight: "xbox:left-stick-right",
-    jump: "xbox:a",
-    duck: "xbox:left-stick-down",
-    block: "xbox:lb",
+    moveLeft: "xbox:dpad-left",
+    moveRight: "xbox:dpad-right",
+    jump: "xbox:dpad-up",
+    duck: "xbox:dpad-down",
+    block: "xbox:rt",
     punch: "xbox:x",
-    kick: "xbox:b",
-    special1: "xbox:y",
-    special2: "xbox:rb",
+    kick: "xbox:y",
+    special1: "xbox:a",
+    special2: "xbox:b",
+    special3: "xbox:rb",
   };
 
   const loadBinds = (key, fallback) => {
@@ -345,15 +348,16 @@ const toggleFullscreen = async () => {
         kick: (parsed.kick ?? fallback.kick ?? "").toLowerCase(),
         special1: (parsed.special1 ?? fallback.special1 ?? "").toLowerCase(),
         special2: (parsed.special2 ?? fallback.special2 ?? "").toLowerCase(),
+        special3: (parsed.special3 ?? fallback.special3 ?? "").toLowerCase(),
       };
     } catch {
       return fallback;
     }
   };
 
-  const [p1Binds, setP1Binds] = useState(() => loadBinds("rgb_fighters_keybinds_p1_v3", DEFAULT_P1));
-  const [p2Binds, setP2Binds] = useState(() => loadBinds("rgb_fighters_keybinds_p2_v3", DEFAULT_P2));
-  const [p1ControllerBinds, setP1ControllerBinds] = useState(() => loadBinds("rgb_fighters_controller_binds_p1_v1", DEFAULT_P1_CONTROLLER));
+  const [p1Binds, setP1Binds] = useState(() => loadBinds("rgb_fighters_keybinds_p1_v4", DEFAULT_P1));
+  const [p2Binds, setP2Binds] = useState(() => loadBinds("rgb_fighters_keybinds_p2_v4", DEFAULT_P2));
+  const [p1ControllerBinds, setP1ControllerBinds] = useState(() => loadBinds("rgb_fighters_controller_binds_p1_v2", DEFAULT_P1_CONTROLLER));
   const p1BindsRef = useRef(p1Binds);
   const p2BindsRef = useRef(p2Binds);
   const p1ControllerBindsRef = useRef(p1ControllerBinds);
@@ -369,19 +373,20 @@ const toggleFullscreen = async () => {
     kick: "__remote_kick",
     special1: "__remote_special1",
     special2: "__remote_special2",
+    special3: "__remote_special3",
   });
 
   useEffect(() => {
     p1BindsRef.current = p1Binds;
     try {
-      localStorage.setItem("rgb_fighters_keybinds_p1_v3", JSON.stringify(p1Binds));
+      localStorage.setItem("rgb_fighters_keybinds_p1_v4", JSON.stringify(p1Binds));
     } catch {}
   }, [p1Binds]);
 
   useEffect(() => {
     p1ControllerBindsRef.current = p1ControllerBinds;
     try {
-      localStorage.setItem("rgb_fighters_controller_binds_p1_v1", JSON.stringify(p1ControllerBinds));
+      localStorage.setItem("rgb_fighters_controller_binds_p1_v2", JSON.stringify(p1ControllerBinds));
     } catch {}
   }, [p1ControllerBinds]);
 
@@ -404,7 +409,7 @@ const toggleFullscreen = async () => {
   useEffect(() => {
     p2BindsRef.current = p2Binds;
     try {
-      localStorage.setItem("rgb_fighters_keybinds_p2_v3", JSON.stringify(p2Binds));
+      localStorage.setItem("rgb_fighters_keybinds_p2_v4", JSON.stringify(p2Binds));
     } catch {}
   }, [p2Binds]);
 
@@ -504,6 +509,7 @@ const toggleFullscreen = async () => {
     kick: "Kick",
     special1: "Special Move 1",
     special2: "Special Move 2",
+    special3: "Special Move 3",
   };
 
   useEffect(() => {
@@ -1160,34 +1166,6 @@ const toggleFullscreen = async () => {
       .catch(() => {});
   }, [mode, gameOver, matchWinnerText, ladderIndex, p1Color, difficulty, token]);
 
-  const fighterNote = (c) =>
-    c === "red"
-      ? "Fire & Dash"
-      : c === "blue"
-      ? "Ice Control"
-      : c === "green"
-      ? "Poison & Heal"
-      : c === "black"
-      ? "Void & Charge"
-      : c === "white"
-      ? "Low Light & Drop"
-      : c === "purple"
-      ? "Double Damage & Boost"
-      : c === "yellow"
-      ? "Spear & Reflect"
-      : c === "rainbow"
-      ? "Turret & Summon"
-      : c === "monochrome"
-      ? "Homing Blast & Floor Wave"
-      : c === "transparent"
-      ? "Burrow & Ground Pound"
-      : c === "gray"
-      ? "Wind & Field Control"
-      : c === "brown"
-      ? "Phase Shot & Armor"
-      : c === "pink"
-      ? "Plus Shot & Parry"
-      : "Triple Fire & Speed Charge";
   const shuffle = (arr) => {
     const a = [...arr];
     for (let i = a.length - 1; i > 0; i--) {
@@ -1481,6 +1459,7 @@ const toggleFullscreen = async () => {
         healTickTimer: p.healTickTimer,
         canProjectile: p.canProjectile,
         canSpecial2: p.canSpecial2,
+        canSpecial3: p.canSpecial3,
         dashTimer: p.dashTimer,
         dashHasHit: p.dashHasHit,
         charging: p.charging,
@@ -1489,6 +1468,8 @@ const toggleFullscreen = async () => {
         purpleChargeTimer: p.purpleChargeTimer,
         orangeCharging: p.orangeCharging,
         orangeChargeTimer: p.orangeChargeTimer,
+        blackCharging: p.blackCharging,
+        blackChargeTimer: p.blackChargeTimer,
         rainbowTurretTimer: p.rainbowTurretTimer,
         rainbowTurretShotTimer: p.rainbowTurretShotTimer,
         rainbowSummonId: p.rainbowSummonId,
@@ -1496,6 +1477,25 @@ const toggleFullscreen = async () => {
         speedBoostTimer: p.speedBoostTimer,
         cooldownBoostTimer: p.cooldownBoostTimer,
         damageAmpTimer: p.damageAmpTimer,
+        snowflakeExpiries: p.snowflakeExpiries,
+        damageReducedTimer: p.damageReducedTimer,
+        special3VisualTimer: p.special3VisualTimer,
+        special3RollTimer: p.special3RollTimer,
+        special3HasHit: p.special3HasHit,
+        yellowWaveChargeTimer: p.yellowWaveChargeTimer,
+        yellowWaveTargetX: p.yellowWaveTargetX,
+        shotgunVisualTimer: p.shotgunVisualTimer,
+        harpoonTargetId: p.harpoonTargetId,
+        harpoonPullTimer: p.harpoonPullTimer,
+        grayPeakId: p.grayPeakId,
+        brownMorphHealth: p.brownMorphHealth,
+        brownOriginalForm: p.brownOriginalForm,
+        pinkTeleportMarker: p.pinkTeleportMarker,
+        pinkTeleportArmTimer: p.pinkTeleportArmTimer,
+        pinkTeleportExplosionTimer: p.pinkTeleportExplosionTimer,
+        thrownById: p.thrownById,
+        thrownLandingPending: p.thrownLandingPending,
+        thrownDirection: p.thrownDirection,
         spearLocked: p.spearLocked,
         spearStunned: p.spearStunned,
         spearStunTimer: p.spearStunTimer,
@@ -1548,6 +1548,15 @@ const toggleFullscreen = async () => {
         speed: proj.speed,
         reflected: proj.reflected,
         trackXOnly: proj.trackXOnly,
+        gravity: proj.gravity,
+        passesPlatforms: proj.passesPlatforms,
+        additiveKnockback: proj.additiveKnockback,
+        lifeFrames: proj.lifeFrames,
+        bounceCount: proj.bounceCount,
+        width: proj.width,
+        height: proj.height,
+        health: proj.health,
+        id: proj.id,
         phaseOwnerId: proj.phaseOwner?.id || proj.phaseOwnerId,
       })),
     };
@@ -2156,10 +2165,12 @@ const toggleFullscreen = async () => {
         poisoned: false,
         poisonTicksLeft: 0,
         poisonTickTimer: 0,
+        poisonOwnerId: null,
         healing: false,
         healTickTimer: 0,
         canProjectile: true,
         canSpecial2: true,
+        canSpecial3: true,
         dashTimer: 0,
         dashHasHit: false,
         charging: false,
@@ -2168,6 +2179,8 @@ const toggleFullscreen = async () => {
         purpleChargeTimer: 0,
         orangeCharging: false,
         orangeChargeTimer: 0,
+        blackCharging: false,
+        blackChargeTimer: 0,
         rainbowTurretTimer: 0,
         rainbowTurretShotTimer: 0,
         rainbowSummonId: null,
@@ -2175,8 +2188,30 @@ const toggleFullscreen = async () => {
         speedBoostTimer: 0,
         airJumpsUsed: 0,
         jumpWasHeld: false,
+        special2WasHeld: false,
+        special3WasHeld: false,
         cooldownBoostTimer: 0,
         damageAmpTimer: 0,
+        snowflakeExpiries: [],
+        damageReducedTimer: 0,
+        special3VisualTimer: 0,
+        special3RollTimer: 0,
+        special3HasHit: false,
+        yellowWaveChargeTimer: 0,
+        yellowWaveTargetX: 0,
+        shotgunVisualTimer: 0,
+        harpoonTargetId: null,
+        harpoonPullTimer: 0,
+        harpoonCooldownPending: false,
+        grayPeakId: null,
+        brownMorphHealth: 0,
+        brownOriginalForm: null,
+        pinkTeleportMarker: null,
+        pinkTeleportArmTimer: 0,
+        pinkTeleportExplosionTimer: 0,
+        thrownById: null,
+        thrownLandingPending: false,
+        thrownDirection: 0,
         spearLocked: false,
         spearStunned: false,
         spearStunTimer: 0,
@@ -2502,6 +2537,7 @@ const toggleFullscreen = async () => {
           p.poisoned = false;
           p.poisonTicksLeft = 0;
           p.poisonTickTimer = 0;
+          p.poisonOwnerId = null;
 
           p.hitstun = false;
           p.hitstunTimer = 0;
@@ -2533,6 +2569,31 @@ const toggleFullscreen = async () => {
 
           p.canProjectile = true;
           p.canSpecial2 = true;
+          p.canSpecial3 = true;
+          p.special2WasHeld = false;
+          p.special3WasHeld = false;
+          p.blackCharging = false;
+          p.blackChargeTimer = 0;
+          p.snowflakeExpiries = [];
+          p.damageReducedTimer = 0;
+          p.special3VisualTimer = 0;
+          p.special3RollTimer = 0;
+          p.special3HasHit = false;
+          p.yellowWaveChargeTimer = 0;
+          p.yellowWaveTargetX = 0;
+          p.shotgunVisualTimer = 0;
+          p.harpoonTargetId = null;
+          p.harpoonPullTimer = 0;
+          p.grayPeakId = null;
+          if (p.brownOriginalForm) Object.assign(p, p.brownOriginalForm);
+          p.brownOriginalForm = null;
+          p.brownMorphHealth = 0;
+          p.pinkTeleportMarker = null;
+          p.pinkTeleportArmTimer = 0;
+          p.pinkTeleportExplosionTimer = 0;
+          p.thrownById = null;
+          p.thrownLandingPending = false;
+          p.thrownDirection = 0;
 
           p.purpleCharging = false;
           p.purpleChargeTimer = 0;
@@ -2671,6 +2732,10 @@ const toggleFullscreen = async () => {
             break;
           case "dash":
             hitboxWidth = 100;
+            break;
+          case "purpleroll":
+            hitboxWidth = 50;
+            hitboxHeight = drawHeight;
             break;
           default:
             hitboxWidth = 0;
@@ -2828,6 +2893,19 @@ const toggleFullscreen = async () => {
         }
       }
 
+      const peaks = projectiles.current.filter((proj) => proj.type === "graypeak" && proj.lifeFrames > 0);
+      for (const fighter of solidFighters) {
+        for (const peak of peaks) {
+          const overlapX = Math.min(fighter.x + fighter.width, peak.x + peak.width) - Math.max(fighter.x, peak.x);
+          const overlapY = Math.min(fighter.y + fighter.height, peak.y + peak.height) - Math.max(fighter.y, peak.y);
+          if (overlapX <= 0 || overlapY <= 0) continue;
+          if (centerX(fighter) < peak.x + peak.width / 2) fighter.x -= overlapX;
+          else fighter.x += overlapX;
+          fighter.x = Math.max(0, Math.min(WORLD_W - fighter.width, fighter.x));
+          fighter.vx = 0;
+        }
+      }
+
       solidFighters.forEach(updateHitboxes);
     };
 
@@ -2844,6 +2922,13 @@ const toggleFullscreen = async () => {
       if (h === "mid") return true;
       if (h === "high") return !defender.ducking;
       return false;
+    };
+
+    const restoreBrownForm = (fighter) => {
+      if (!fighter?.brownOriginalForm) return;
+      Object.assign(fighter, fighter.brownOriginalForm);
+      fighter.brownOriginalForm = null;
+      fighter.brownMorphHealth = 0;
     };
 
     const applyDamage = (attacker, defender, attackType, extra = {}) => {
@@ -2898,6 +2983,85 @@ const toggleFullscreen = async () => {
           knockback = 12;
           launchUp = true;
           hitstunFrames = 16;
+          break;
+        case "fireanti":
+          damage = 4;
+          knockback = 4;
+          launchUp = true;
+          hitstunFrames = 16;
+          break;
+        case "snowflake":
+          damage = 2;
+          knockback = 3;
+          hitstunFrames = 8;
+          break;
+        case "greenburst":
+          damage = 4;
+          knockback = 6;
+          hitstunFrames = 12;
+          break;
+        case "greenresidue":
+          damage = 1;
+          knockback = 0;
+          hitstunFrames = 0;
+          break;
+        case "shotgunpellet":
+          damage = 4;
+          knockback = 15;
+          hitstunFrames = 8;
+          break;
+        case "harpoon":
+          damage = 2;
+          knockback = 0;
+          hitstunFrames = 6;
+          break;
+        case "tripleball":
+          damage = 5;
+          knockback = 6;
+          hitstunFrames = 10;
+          break;
+        case "purpleroll":
+          damage = 6;
+          knockback = 8;
+          launchUp = true;
+          hitstunFrames = 18;
+          break;
+        case "yellowwave":
+          damage = 5;
+          knockback = 18;
+          hitstunFrames = 14;
+          break;
+        case "graypeak":
+          damage = 5;
+          knockback = 2;
+          hitstunFrames = 60;
+          break;
+        case "browncolorball":
+          damage = 2;
+          knockback = 4;
+          hitstunFrames = 8;
+          break;
+        case "pinkteleport":
+          damage = 4;
+          knockback = 4;
+          launchUp = true;
+          hitstunFrames = 16;
+          break;
+        case "transparentdebuff":
+          damage = 7;
+          knockback = 8;
+          hitstunFrames = 12;
+          break;
+        case "monochromethrow":
+          damage = 13;
+          knockback = 0;
+          hitstunFrames = 20;
+          break;
+        case "rainbowgrenade":
+          damage = 15;
+          knockback = 8;
+          launchUp = true;
+          hitstunFrames = 22;
           break;
         case "fireball":
           damage = 5;
@@ -3000,10 +3164,10 @@ const toggleFullscreen = async () => {
           launchUp = true;
           break;
         case "poisonorb":
-          damage = 5;
-          knockback = 3;
+          damage = 0;
+          knockback = 0;
           applyPoisonSlowFrames = 480;
-          applyPoisonTicks = 10;
+          applyPoisonTicks = 5;
           break;
         case "blackball":
           damage = 7;
@@ -3030,6 +3194,10 @@ const toggleFullscreen = async () => {
 
       if (attacker?.type === "rainbow" && ["punch", "kick", "uppercut", "sweep"].includes(attackType)) {
         damage *= 2;
+      }
+
+      if (attacker?.damageReducedTimer > 0) {
+        damage = Math.ceil(damage * 0.5);
       }
 
       if (defender.damageAmpTimer > 0) {
@@ -3161,6 +3329,7 @@ const toggleFullscreen = async () => {
           defender.poisoned = true;
           defender.poisonTicksLeft = applyPoisonTicks;
           defender.poisonTickTimer = 60;
+          defender.poisonOwnerId = attacker?.id || null;
         }
         if (applyJumpDisable > 0) {
           defender.jumpDisabled = true;
@@ -3173,6 +3342,13 @@ const toggleFullscreen = async () => {
           defender.spearStunned = true;
           defender.spearStunTimer = 5;
         }
+        if (attackType === "snowflake") {
+          const now = Date.now();
+          defender.snowflakeExpiries = [...(defender.snowflakeExpiries || []).filter((expiry) => expiry > now), now + 3000];
+        }
+        if (attackType === "transparentdebuff") {
+          defender.damageReducedTimer = 300;
+        }
         if (hitstunFrames > 0 && attackType !== "poisonorb") {
           defender.hitstun = true;
           defender.hitstunTimer = hitstunFrames;
@@ -3183,7 +3359,13 @@ const toggleFullscreen = async () => {
         }
       }
 
-      defender.health -= damage;
+      const dealtDamage = damage;
+      if (defender.brownOriginalForm && damage > 0) {
+        defender.brownMorphHealth -= damage;
+        if (defender.brownMorphHealth <= 0) restoreBrownForm(defender);
+      } else {
+        defender.health -= damage;
+      }
       if (!defender.isHuman && !defender.dummy && damage > 0) {
         defender.aiGuardPressure = Math.min(
           100,
@@ -3207,14 +3389,15 @@ const toggleFullscreen = async () => {
 }
 
       const dir = extra.knockbackDir ?? attacker?.facing ?? 1;
-      defender.vx = dir * knockback;
+      if (extra.additiveKnockback) defender.vx += dir * knockback;
+      else defender.vx = dir * knockback;
 
       if (launchUp && !blocked) {
         defender.vy = -25;
         defender.grounded = false;
       }
 
-      return damage;
+      return dealtDamage;
     };
 
     const getNearestEnemy = (ai) => {
@@ -3251,9 +3434,17 @@ const stopDefense = (ai) => {
   ai.ducking = false;
 };
 
-const meleeCooldown = (fighter, baseCooldown) => (
-  fighter.cooldownBoostTimer > 0 ? Math.ceil(baseCooldown * 0.5) : baseCooldown
+const cooldownMultiplier = (fighter) => {
+  const now = Date.now();
+  fighter.snowflakeExpiries = (fighter.snowflakeExpiries || []).filter((expiry) => expiry > now);
+  return 1 + fighter.snowflakeExpiries.length * 0.5;
+};
+
+const abilityCooldown = (fighter, baseCooldown) => Math.ceil(
+  (fighter.cooldownBoostTimer > 0 ? baseCooldown * 0.5 : baseCooldown) * cooldownMultiplier(fighter)
 );
+
+const meleeCooldown = (fighter, baseCooldown) => abilityCooldown(fighter, baseCooldown);
 
 const rainbowShotColor = () => RAINBOW_COLORS[Math.floor(Date.now() / 80) % RAINBOW_COLORS.length];
 
@@ -3299,7 +3490,7 @@ const beginRainbowTurret = (fighter) => {
 
   setManagedTimeout(() => {
     fighter.canProjectile = true;
-  }, 10000);
+  }, abilityCooldown(fighter, 10000));
 
   return true;
 };
@@ -3334,7 +3525,7 @@ const beginRainbowSummon = (fighter) => {
 
   setManagedTimeout(() => {
     fighter.canSpecial2 = true;
-  }, 20000);
+  }, abilityCooldown(fighter, 20000));
 
   return true;
 };
@@ -3376,7 +3567,7 @@ const beginMonochromeMissile = (fighter) => {
   playSfx("fireball");
   setManagedTimeout(() => {
     fighter.canProjectile = true;
-  }, 1000);
+  }, abilityCooldown(fighter, 1000));
   return true;
 };
 
@@ -3403,7 +3594,7 @@ const beginMonochromeWave = (fighter) => {
   playSfx("white_drop");
   setManagedTimeout(() => {
     fighter.canSpecial2 = true;
-  }, 8000);
+  }, abilityCooldown(fighter, 8000));
   return true;
 };
 
@@ -3443,7 +3634,7 @@ const beginPinkPlus = (fighter) => {
   playSfx("purple_damage");
   setManagedTimeout(() => {
     fighter.canProjectile = true;
-  }, 2000);
+  }, abilityCooldown(fighter, 2000));
   return true;
 };
 
@@ -3463,7 +3654,7 @@ const beginPinkParry = (fighter) => {
   playSfx("block");
   setManagedTimeout(() => {
     fighter.canSpecial2 = true;
-  }, 1000);
+  }, abilityCooldown(fighter, 1000));
   return true;
 };
 
@@ -3504,7 +3695,7 @@ const beginBrownShift = (fighter) => {
   playSfx("poisonball");
   setManagedTimeout(() => {
     fighter.canProjectile = true;
-  }, 5000);
+  }, abilityCooldown(fighter, 5000));
   return true;
 };
 
@@ -3519,7 +3710,7 @@ const beginBrownArmorCharge = (fighter) => {
   playSfx("charge_start");
   setManagedTimeout(() => {
     fighter.canSpecial2 = true;
-  }, 15000);
+  }, abilityCooldown(fighter, 15000));
   return true;
 };
 
@@ -3544,7 +3735,7 @@ const beginGrayWind = (fighter) => {
   playSfx("sloworb");
   setManagedTimeout(() => {
     fighter.canProjectile = true;
-  }, 3000);
+  }, abilityCooldown(fighter, 3000));
   return true;
 };
 
@@ -3560,7 +3751,7 @@ const beginGrayHammer = (fighter) => {
   playSfx("uppercut");
   setManagedTimeout(() => {
     fighter.canSpecial2 = true;
-  }, 4000);
+  }, abilityCooldown(fighter, 4000));
   return true;
 };
 
@@ -3577,7 +3768,7 @@ const beginTransparentBurrow = (fighter) => {
   playSfx("dash");
   setManagedTimeout(() => {
     fighter.canProjectile = true;
-  }, 8000);
+  }, abilityCooldown(fighter, 8000));
   return true;
 };
 
@@ -3615,7 +3806,353 @@ const beginTransparentPound = (fighter) => {
   playSfx("charge_start");
   setManagedTimeout(() => {
     fighter.canSpecial2 = true;
-  }, 6000);
+  }, abilityCooldown(fighter, 6000));
+  return true;
+};
+
+const startSpecial3Cooldown = (fighter, milliseconds) => {
+  fighter.canSpecial3 = false;
+  setManagedTimeout(() => {
+    fighter.canSpecial3 = true;
+  }, abilityCooldown(fighter, milliseconds));
+};
+
+const fireShotgun = (fighter, downward = false) => {
+  const originX = fighter.x + fighter.width / 2 + (downward ? 0 : fighter.facing * 22);
+  const originY = fighter.y + fighter.height / 2 + (downward ? fighter.height / 2 : 0);
+  const spreads = [-0.22, -0.07, 0.07, 0.22];
+  spreads.forEach((spread) => {
+    projectiles.current.push({
+      x: originX,
+      y: originY,
+      vx: downward ? spread * 16 : fighter.facing * 13,
+      vy: downward ? 12 : spread * 13,
+      owner: fighter,
+      team: fighter.team,
+      type: "shotgunpellet",
+      attackHeight: downward ? "overhead" : "mid",
+      color: "#fb923c",
+      radius: 5,
+      passesPlatforms: downward,
+      additiveKnockback: true,
+    });
+  });
+  fighter.shotgunVisualTimer = 18;
+  playSfx("orange_triple");
+};
+
+const explodeGreenArc = (proj, impactX, impactY, directTarget = null) => {
+  fighters.filter((target) => target.alive && target.team !== proj.team).forEach((target) => {
+    const dx = centerX(target) - impactX;
+    const dy = centerY(target) - impactY;
+    if (target !== directTarget && Math.sqrt(dx * dx + dy * dy) > 48) return;
+    applyDamage(proj.owner, target, "greenburst", {
+      attackHeight: "unblockable",
+      isProjectile: true,
+      knockbackDir: dx < 0 ? -1 : 1,
+      ignoreRainbowInvulnerable: !!proj.reflected,
+    });
+    markKOIfNeeded(target);
+  });
+  projectiles.current.push({
+    x: Math.max(20, Math.min(WORLD_W - 20, impactX)),
+    y: impactY,
+    vx: 0,
+    vy: 0,
+    owner: proj.owner,
+    team: proj.team,
+    type: "greenresidue",
+    attackHeight: "unblockable",
+    color: "rgba(34,197,94,0.72)",
+    radius: 20,
+    lifeFrames: 180,
+    residueTickFrames: {},
+  });
+  playSfx("poisonball");
+};
+
+const morphBrownInto = (brown, target) => {
+  if (!brown?.alive || !target?.alive) return;
+  if (target.type === "brown") {
+    brown.health = Math.min(brown.maxHealth || 100, brown.health + 5);
+    return;
+  }
+  if (!brown.brownOriginalForm) {
+    brown.brownOriginalForm = {
+      type: "brown",
+      color: brown.color,
+      lightColor: brown.lightColor,
+      name: brown.name,
+      maxHealth: brown.maxHealth,
+    };
+  }
+  brown.type = target.type;
+  brown.color = target.color;
+  brown.lightColor = target.lightColor;
+  brown.name = target.name;
+  brown.brownMorphHealth = 5;
+  playSfx("purple_boost");
+};
+
+const explodeRainbowGrenade = (proj, directTarget = null) => {
+  const targets = fighters.filter((target) => target.alive && target.team !== proj.team);
+  targets.forEach((target) => {
+    const close = Math.abs(centerX(target) - proj.x) <= 42 && Math.abs(centerY(target) - proj.y) <= 52;
+    if (target === directTarget || close) {
+      applyDamage(proj.owner, target, "rainbowgrenade", {
+        attackHeight: "unblockable",
+        isProjectile: true,
+        knockbackDir: centerX(target) < proj.x ? -1 : 1,
+      });
+      markKOIfNeeded(target);
+    }
+  });
+  projectiles.current.push({
+    x: proj.x,
+    y: proj.y,
+    vx: 0,
+    vy: 0,
+    owner: proj.owner,
+    team: proj.team,
+    type: "rainbowblast",
+    color: "#f8fafc",
+    radius: 42,
+    lifeFrames: 12,
+  });
+  playSfx("chargeball");
+};
+
+const beginSpecial3 = (fighter, targetOverride = null) => {
+  const target = targetOverride || getNearestEnemy(fighter);
+  if (!fighter.alive || fighter.specialDisabled || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging || fighter.blackCharging || fighter.pinkParrying || fighter.brownPhasing || fighter.brownCharging || fighter.transparentBurrowing) return false;
+
+  if (fighter.type === "pink" && fighter.pinkTeleportMarker) {
+    if (fighter.pinkTeleportArmTimer > 0) return false;
+    const marker = fighter.pinkTeleportMarker;
+    fighter.x = Math.max(0, Math.min(WORLD_W - fighter.width, marker.x));
+    fighter.y = Math.max(0, Math.min(groundLevel - fighter.height, marker.y));
+    fighter.vx = 0;
+    fighter.vy = 0;
+    fighter.grounded = fighter.y + fighter.height >= groundLevel;
+    fighter.pinkTeleportExplosionTimer = 18;
+    fighters.filter((other) => other.alive && other.team !== fighter.team).forEach((other) => {
+      const dx = centerX(other) - centerX(fighter);
+      const dy = centerY(other) - centerY(fighter);
+      if (Math.sqrt(dx * dx + dy * dy) <= 72) {
+        applyDamage(fighter, other, "pinkteleport", {
+          attackHeight: "unblockable",
+          isProjectile: true,
+          knockbackDir: dx < 0 ? -1 : 1,
+        });
+        markKOIfNeeded(other);
+      }
+    });
+    fighter.pinkTeleportMarker = null;
+    startSpecial3Cooldown(fighter, 5000);
+    playSfx("white_drop");
+    return true;
+  }
+
+  if (!fighter.canSpecial3 || !target) return false;
+  stopDefense(fighter);
+
+  if (fighter.type === "fire") {
+    const targets = fighters.filter((other) => other.alive && other.team !== fighter.team);
+    fighter.special3VisualTimer = 16;
+    targets.forEach((other) => {
+      const horizontal = Math.abs(centerX(other) - centerX(fighter));
+      const above = other.y + other.height <= fighter.y + 18;
+      if (horizontal <= 92 && above) {
+        applyDamage(fighter, other, "fireanti", {
+          attackHeight: "unblockable",
+          knockbackDir: centerX(other) < centerX(fighter) ? -1 : 1,
+        });
+        markKOIfNeeded(other);
+      }
+    });
+    startSpecial3Cooldown(fighter, 1000);
+    playSfx("uppercut");
+    return true;
+  }
+
+  if (fighter.type === "ice") {
+    projectiles.current.push({ x: centerX(fighter), y: centerY(fighter), vx: fighter.facing * 10, vy: 0, owner: fighter, team: fighter.team, type: "snowflake", attackHeight: "high", color: "#93c5fd", radius: 11 });
+    startSpecial3Cooldown(fighter, 500);
+    playSfx("iceball");
+    return true;
+  }
+
+  if (fighter.type === "poison") {
+    const frames = 42;
+    const gravity = 0.48;
+    const dx = centerX(target) - centerX(fighter);
+    const dy = centerY(target) - centerY(fighter);
+    projectiles.current.push({
+      x: centerX(fighter),
+      y: centerY(fighter),
+      vx: dx / frames,
+      vy: (dy - 0.5 * gravity * frames * frames) / frames,
+      gravity,
+      owner: fighter,
+      team: fighter.team,
+      type: "greenarc",
+      attackHeight: "unblockable",
+      color: "#16a34a",
+      radius: 9,
+    });
+    startSpecial3Cooldown(fighter, 1500);
+    playSfx("poisonball");
+    return true;
+  }
+
+  if (fighter.type === "void") {
+    fighter.blackCharging = true;
+    fighter.blackChargeTimer = 0;
+    fighter.vx = 0;
+    startSpecial3Cooldown(fighter, 10000);
+    playSfx("charge_start");
+    return true;
+  }
+
+  if (fighter.type === "light") {
+    [-28, 0, 28].forEach((offset) => {
+      projectiles.current.push({ x: centerX(fighter) + fighter.facing * offset, y: centerY(fighter), vx: fighter.facing * 11, vy: 0, owner: fighter, team: fighter.team, type: "tripleball", attackHeight: "high", color: "#f8fafc", radius: 8 });
+    });
+    startSpecial3Cooldown(fighter, 2000);
+    playSfx("orange_triple");
+    return true;
+  }
+
+  if (fighter.type === "psychic") {
+    fighter.attacking = true;
+    fighter.attackType = "purpleroll";
+    fighter.attackHeight = "low";
+    fighter.attackTimer = 120;
+    fighter.special3RollTimer = 120;
+    fighter.special3HasHit = false;
+    fighter.ducking = true;
+    fighter.vx = fighter.facing * 10;
+    startSpecial3Cooldown(fighter, 2000);
+    playSfx("dash");
+    return true;
+  }
+
+  if (fighter.type === "electric") {
+    fighter.yellowWaveChargeTimer = 30;
+    fighter.yellowWaveTargetX = centerX(target);
+    startSpecial3Cooldown(fighter, 1500);
+    playSfx("charge_start");
+    return true;
+  }
+
+  if (fighter.type === "explosion") {
+    fireShotgun(fighter, true);
+    fighter.vy = fighter.jumpPower;
+    fighter.grounded = false;
+    startSpecial3Cooldown(fighter, 2000);
+    return true;
+  }
+
+  if (fighter.type === "gray") {
+    const existing = projectiles.current.find((proj) => proj.type === "graypeak" && proj.owner === fighter && proj.lifeFrames > 0);
+    if (existing) return false;
+    const x = Math.max(0, Math.min(WORLD_W - fighter.width, fighter.facing > 0 ? fighter.x + fighter.width * 1.5 : fighter.x - fighter.width * 1.5));
+    const surfaceY = fighter.grounded ? fighter.y + fighter.height : groundLevel;
+    const peak = { id: `gray_peak_${fighter.id}_${Date.now()}`, x, y: surfaceY - fighter.height, vx: 0, vy: 0, owner: fighter, team: fighter.team, type: "graypeak", attackHeight: "low", color: "#6b7280", radius: 20, width: fighter.width, height: fighter.height, health: 16, lifeFrames: 120 };
+    projectiles.current.push(peak);
+    fighter.grayPeakId = peak.id;
+    const victim = fighters.find((other) => other.alive && other.team !== fighter.team && other.x < x + peak.width && other.x + other.width > x && other.y < peak.y + peak.height && other.y + other.height > peak.y);
+    if (victim) {
+      applyDamage(fighter, victim, "graypeak", { attackHeight: "low", knockbackDir: fighter.facing });
+      markKOIfNeeded(victim);
+      peak.lifeFrames = 0;
+      fighter.grayPeakId = null;
+    }
+    startSpecial3Cooldown(fighter, 1500);
+    playSfx("uppercut");
+    return true;
+  }
+
+  if (fighter.type === "brown") {
+    projectiles.current.push({ x: centerX(fighter), y: centerY(fighter), vx: fighter.facing * 8, vy: 0, owner: fighter, team: fighter.team, type: "browncolorball", attackHeight: "high", color: "#92400e", radius: 10 });
+    startSpecial3Cooldown(fighter, 1000);
+    playSfx("fireball");
+    return true;
+  }
+
+  if (fighter.type === "pink") {
+    fighter.pinkTeleportMarker = { x: fighter.x, y: fighter.y };
+    fighter.pinkTeleportArmTimer = 180;
+    playSfx("purple_boost");
+    return true;
+  }
+
+  if (fighter.type === "transparent") {
+    projectiles.current.push({ x: centerX(fighter), y: centerY(fighter), vx: fighter.facing * 12, vy: 0, owner: fighter, team: fighter.team, type: "transparentdebuff", attackHeight: "mid", color: "rgba(226,232,240,0.48)", radius: 10 });
+    startSpecial3Cooldown(fighter, 3000);
+    playSfx("sloworb");
+    return true;
+  }
+
+  if (fighter.type === "monochrome") {
+    const inFront = fighter.facing > 0 ? centerX(target) >= centerX(fighter) : centerX(target) <= centerX(fighter);
+    if (!inFront || Math.abs(centerX(target) - centerX(fighter)) > 105 || Math.abs(centerY(target) - centerY(fighter)) > 55) return false;
+    const wasHitstunned = fighter.hitstun;
+    applyDamage(fighter, target, "monochromegrab", { attackHeight: "unblockable", knockbackDir: fighter.facing });
+    if (!wasHitstunned && !fighter.hitstun) {
+      target.thrownById = fighter.id;
+      target.thrownLandingPending = true;
+      target.thrownDirection = fighter.facing;
+      target.vx = fighter.facing * 18;
+      target.vy = -15;
+      target.grounded = false;
+      target.hitstun = true;
+      target.hitstunTimer = 180;
+      playSfx("sweep");
+    }
+    startSpecial3Cooldown(fighter, 4000);
+    return true;
+  }
+
+  if (fighter.type === "rainbow") {
+    projectiles.current.push({ x: centerX(fighter), y: centerY(fighter), vx: fighter.facing * 6.6, vy: -11.5, gravity: 0.62, owner: fighter, team: fighter.team, type: "rainbowgrenade", attackHeight: "unblockable", color: "#ec4899", radius: 20, bounceCount: 0 });
+    startSpecial3Cooldown(fighter, 5000);
+    playSfx("chargeball");
+    return true;
+  }
+
+  return false;
+};
+
+const beginOrangeHarpoon = (fighter) => {
+  if (fighter.harpoonTargetId) {
+    const target = fighters.find((other) => other.id === fighter.harpoonTargetId && other.alive);
+    if (!target) {
+      fighter.harpoonTargetId = null;
+      return false;
+    }
+    fighter.harpoonPullTimer = 90;
+    playSfx("yellow_spear");
+    return true;
+  }
+  if (!fighter.canSpecial2 || fighter.specialDisabled || fighter.attacking || fighter.frozen || fighter.hitstun || fighter.spearStunned) return false;
+  projectiles.current.push({
+    x: fighter.x + (fighter.facing > 0 ? fighter.width : 0),
+    y: centerY(fighter),
+    vx: fighter.facing * 14,
+    vy: 0,
+    owner: fighter,
+    team: fighter.team,
+    type: "orangeharpoon",
+    attackHeight: "mid",
+    color: "#f97316",
+    radius: 7,
+  });
+  fighter.canSpecial2 = false;
+  setManagedTimeout(() => {
+    fighter.canSpecial2 = true;
+  }, abilityCooldown(fighter, 3000));
+  playSfx("yellow_spear");
   return true;
 };
 
@@ -3736,21 +4273,8 @@ const beginProjectile = (ai) => {
       cooldown = 5000;
       playSfx("yellow_spear");
     } else if (ai.type === "explosion") {
-      [-32, 0, 32].forEach((offset) => {
-        projectiles.current.push({
-        x: projX + ai.facing * (offset + 18),
-        y: projY,
-        vx: ai.facing * 11,
-        owner: ai,
-        team: ai.team,
-        type: "orangeball",
-        attackHeight: "high",
-        color: "#f97316",
-        radius: 8,
-        });
-      });
+      fireShotgun(ai, false);
       cooldown = 2000;
-      playSfx("orange_triple");
     } else if (ai.type === "ice") {
       projectiles.current.push({
         x: projX,
@@ -3813,7 +4337,7 @@ const beginProjectile = (ai) => {
   ai.canProjectile = false;
   setManagedTimeout(() => {
     ai.canProjectile = true;
-  }, cooldown);
+  }, abilityCooldown(ai, cooldown));
 
   return true;
 };
@@ -3822,6 +4346,7 @@ const beginRedDash = (ai) => {
   if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging) return false;
 
   stopDefense(ai);
+  ai.ducking = false;
   ai.attacking = true;
   ai.attackType = "dash";
   ai.attackHeight = "mid";
@@ -3833,7 +4358,7 @@ const beginRedDash = (ai) => {
   ai.canSpecial2 = false;
   setManagedTimeout(() => {
     ai.canSpecial2 = true;
-  }, 1800);
+  }, abilityCooldown(ai, 2000));
 
   return true;
 };
@@ -3857,7 +4382,7 @@ const beginIceSlowOrb = (ai) => {
   ai.canSpecial2 = false;
   setManagedTimeout(() => {
     ai.canSpecial2 = true;
-  }, 9000);
+  }, abilityCooldown(ai, 4000));
 
   return true;
 };
@@ -3886,7 +4411,7 @@ const beginWhiteDrop = (ai, target) => {
   ai.canSpecial2 = false;
   setManagedTimeout(() => {
     ai.canSpecial2 = true;
-  }, 3000);
+  }, abilityCooldown(ai, 3000));
 
   return true;
 };
@@ -3906,7 +4431,7 @@ const beginPurplePowerUp = (ai) => {
 
   setManagedTimeout(() => {
     ai.canSpecial2 = true;
-  }, 13000);
+  }, abilityCooldown(ai, 13000));
 
   return true;
 };
@@ -3919,27 +4444,6 @@ const beginYellowReflect = (ai) => {
   ai.reflecting = true;
   ai.reflectTimer = 60;
   playSfx("reflect");
-
-  return true;
-};
-
-const beginOrangeCooldownBoost = (ai) => {
-  if (!ai.canSpecial2 || ai.specialDisabled || ai.attacking || ai.frozen || ai.hitstun || ai.spearStunned || ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging || ai.cooldownBoostTimer > 0) return false;
-
-  stopDefense(ai);
-  ai.vx = 0;
-  ai.attacking = false;
-  ai.attackTimer = 0;
-  ai.attackType = "";
-  ai.attackHeight = "";
-  ai.orangeCharging = true;
-  ai.orangeChargeTimer = 0;
-  ai.canSpecial2 = false;
-
-  playSfx("charge_start");
-  setManagedTimeout(() => {
-    ai.canSpecial2 = true;
-  }, 13000);
 
   return true;
 };
@@ -3960,7 +4464,7 @@ const beginPoisonHeal = (ai) => {
   ai.canSpecial2 = false;
   setManagedTimeout(() => {
     ai.canSpecial2 = true;
-  }, 3500);
+  }, abilityCooldown(ai, 3500));
 
   return true;
 };
@@ -4002,7 +4506,7 @@ const releaseVoidCharge = (ai) => {
 
   setManagedTimeout(() => {
     ai.canSpecial2 = true;
-  }, 3200);
+  }, abilityCooldown(ai, 3200));
 
   return true;
 };
@@ -4018,7 +4522,7 @@ const tryAiReadProjectileInput = (ai, opp) => {
   if (revision <= (ai.aiLastInputRevision || 0)) return false;
   ai.aiLastInputRevision = revision;
 
-  if (opp.inputIntentAction !== "special1" || Date.now() - (opp.inputIntentAt || 0) > 100) return false;
+  if (!["special1", "special2", "special3"].includes(opp.inputIntentAction) || Date.now() - (opp.inputIntentAt || 0) > 100) return false;
   const readInput = rand() < getAiSettings(ai).inputReadChance;
   ai.aiReadInputAction = readInput ? "special1" : "";
   return readInput;
@@ -4041,8 +4545,7 @@ const getIncomingProjectile = (ai, anticipatedOwner = null) => {
       yDist < 70;
 
     const verticalThreat =
-      (proj.vy || 0) > 0 &&
-      proj.y < centerY(ai) &&
+      (((proj.vy || 0) > 0 && proj.y < centerY(ai)) || ((proj.vy || 0) < 0 && proj.y > centerY(ai))) &&
       xDist < 55 &&
       yDist < settings.projectileReactRange;
 
@@ -5169,7 +5672,23 @@ const tryAiAbility = (ai, opp, sameLane, incoming, options = {}) => {
     return rand() < naturalChance * repetitionScale;
   };
 
-  switch (ai.type) {
+  const thirdMoveContext =
+    (ai.type === "fire" && opp.y + opp.height <= ai.y + 22 && dx < 105) ||
+    (ai.type === "psychic" && sameLane && dx < 360) ||
+    (ai.type === "monochrome" && sameLane && dx < 110) ||
+    (ai.type === "gray" && sameLane && dx < 95) ||
+    (ai.type === "explosion" && (!ai.grounded || centerY(opp) > centerY(ai))) ||
+    (ai.type === "pink" && ai.pinkTeleportMarker && ai.pinkTeleportArmTimer <= 0) ||
+    (ai.type === "electric" && dx > 90) ||
+    targetVulnerable || badlyBehind;
+
+  tryAbilityAction(
+    `${ai.type}Special3`,
+    (ai.canSpecial3 || (ai.type === "pink" && ai.pinkTeleportMarker)) && wantsAbility(`${ai.type}Special3`, thirdMoveContext, 0.38),
+    () => beginSpecial3(ai, opp)
+  );
+
+  if (!usedAction) switch (ai.type) {
     case "rainbow":
       tryAbilityAction(
         "rainbowSummon",
@@ -5268,9 +5787,9 @@ const tryAiAbility = (ai, opp, sameLane, incoming, options = {}) => {
       break;
     case "explosion":
       tryAbilityAction(
-        "explosionBoost",
-        ai.canSpecial2 && ai.cooldownBoostTimer <= 0 && dx > 125 && wantsAbility("explosionBoost", badlyBehind || read.turtle > 6 || dx > 240, 0.42),
-        () => beginOrangeCooldownBoost(ai)
+        "explosionHarpoon",
+        (ai.canSpecial2 || ai.harpoonTargetId) && dx > 70 && wantsAbility("explosionHarpoon", ai.harpoonTargetId || targetVulnerable || dx > 190, 0.58),
+        () => beginOrangeHarpoon(ai)
       ) ||
       tryAbilityAction(
         "explosionBurst",
@@ -5578,7 +6097,14 @@ const updateAI = (ai) => {
     return;
   }
 
-  if (ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging) {
+  if (ai.special3RollTimer > 0) {
+    stopDefense(ai);
+    ai.ducking = true;
+    ai.vx = ai.facing * 10;
+    return;
+  }
+
+  if (ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging || ai.blackCharging) {
     stopDefense(ai);
     ai.vx = 0;
     return;
@@ -6168,6 +6694,7 @@ if (hpW > 0) {
         p.poisoned = false;
         p.poisonTicksLeft = 0;
         p.poisonTickTimer = 0;
+        p.poisonOwnerId = null;
 
         p.hitstun = false;
         p.hitstunTimer = 0;
@@ -6193,6 +6720,31 @@ if (hpW > 0) {
 
         p.canProjectile = true;
         p.canSpecial2 = true;
+        p.canSpecial3 = true;
+        p.special2WasHeld = false;
+        p.special3WasHeld = false;
+        p.blackCharging = false;
+        p.blackChargeTimer = 0;
+        p.snowflakeExpiries = [];
+        p.damageReducedTimer = 0;
+        p.special3VisualTimer = 0;
+        p.special3RollTimer = 0;
+        p.special3HasHit = false;
+        p.yellowWaveChargeTimer = 0;
+        p.yellowWaveTargetX = 0;
+        p.shotgunVisualTimer = 0;
+        p.harpoonTargetId = null;
+        p.harpoonPullTimer = 0;
+        p.grayPeakId = null;
+        if (p.brownOriginalForm) Object.assign(p, p.brownOriginalForm);
+        p.brownOriginalForm = null;
+        p.brownMorphHealth = 0;
+        p.pinkTeleportMarker = null;
+        p.pinkTeleportArmTimer = 0;
+        p.pinkTeleportExplosionTimer = 0;
+        p.thrownById = null;
+        p.thrownLandingPending = false;
+        p.thrownDirection = 0;
 
         p.healing = false;
         p.healTickTimer = 0;
@@ -6264,6 +6816,7 @@ if (hpW > 0) {
         p.poisoned = false;
         p.poisonTicksLeft = 0;
         p.poisonTickTimer = 0;
+        p.poisonOwnerId = null;
 
         p.hitstun = false;
         p.hitstunTimer = 0;
@@ -6289,6 +6842,31 @@ if (hpW > 0) {
 
         p.canProjectile = true;
         p.canSpecial2 = true;
+        p.canSpecial3 = true;
+        p.special2WasHeld = false;
+        p.special3WasHeld = false;
+        p.blackCharging = false;
+        p.blackChargeTimer = 0;
+        p.snowflakeExpiries = [];
+        p.damageReducedTimer = 0;
+        p.special3VisualTimer = 0;
+        p.special3RollTimer = 0;
+        p.special3HasHit = false;
+        p.yellowWaveChargeTimer = 0;
+        p.yellowWaveTargetX = 0;
+        p.shotgunVisualTimer = 0;
+        p.harpoonTargetId = null;
+        p.harpoonPullTimer = 0;
+        p.grayPeakId = null;
+        if (p.brownOriginalForm) Object.assign(p, p.brownOriginalForm);
+        p.brownOriginalForm = null;
+        p.brownMorphHealth = 0;
+        p.pinkTeleportMarker = null;
+        p.pinkTeleportArmTimer = 0;
+        p.pinkTeleportExplosionTimer = 0;
+        p.thrownById = null;
+        p.thrownLandingPending = false;
+        p.thrownDirection = 0;
 
         p.healing = false;
         p.healTickTimer = 0;
@@ -6392,8 +6970,14 @@ if (hpW > 0) {
       };
       const jumpHeld = getHeld("jump");
       const jumpPressed = jumpHeld && !p.jumpWasHeld;
+      const special2Held = getHeld("special2");
+      const special2Pressed = special2Held && !p.special2WasHeld;
+      const special3Held = getHeld("special3");
+      const special3Pressed = special3Held && !p.special3WasHeld;
       const finishControls = () => {
         p.jumpWasHeld = jumpHeld;
+        p.special2WasHeld = special2Held;
+        p.special3WasHeld = special3Held;
       };
       const tryJump = () => {
         if (!jumpHeld || p.jumpDisabled) return;
@@ -6418,7 +7002,15 @@ if (hpW > 0) {
         }
       }
 
-      if (p.spearLocked || p.reflecting || p.purpleCharging || p.orangeCharging || p.pinkParrying || p.brownPhasing || p.brownCharging) {
+      if (p.special3RollTimer > 0) {
+        p.vx = p.facing * 10;
+        p.ducking = true;
+        p.blocking = false;
+        finishControls();
+        return;
+      }
+
+      if (p.spearLocked || p.reflecting || p.purpleCharging || p.orangeCharging || p.blackCharging || p.pinkParrying || p.brownPhasing || p.brownCharging) {
         p.vx = 0;
         p.blocking = false;
         if (!p.pinkParrying) p.ducking = false;
@@ -6609,10 +7201,7 @@ if (hpW > 0) {
             playSfx("yellow_spear");
             cooldown = 5000;
           } else if (p.type === "explosion") {
-            [-32, 0, 32].forEach((offset) => {
-              projectiles.current.push({ x: projX + p.facing * (offset + 18), y: projY, vx: p.facing * 11, owner: p, team: p.team, type: "orangeball", attackHeight: "high", color: "#f97316", radius: 8 });
-            });
-            playSfx("orange_triple");
+            fireShotgun(p, false);
             cooldown = 2000;
           } else if (p.type === "ice") {
             projectiles.current.push({ x: projX, y: projY, vx: p.facing * 7, owner: p, team: p.team, type: "iceball", attackHeight: "high", color: "#60a5fa", radius: 8 });
@@ -6633,13 +7222,22 @@ if (hpW > 0) {
           }
 
           p.canProjectile = false;
-          setManagedTimeout(() => (p.canProjectile = true), cooldown);
+          setManagedTimeout(() => (p.canProjectile = true), abilityCooldown(p, cooldown));
           clearHeld("special1");
         }
 
-        if (getHeld("special2") && !p.specialDisabled) {
-          if (p.canSpecial2) {
+        if (special2Pressed) {
+          p.inputIntentRevision = (p.inputIntentRevision || 0) + 1;
+          p.inputIntentAction = "special2";
+          p.inputIntentAt = Date.now();
+        }
+
+        if (special2Held && !p.specialDisabled && (p.type !== "explosion" || special2Pressed)) {
+          if (p.type === "explosion" && p.harpoonTargetId) {
+            if (beginOrangeHarpoon(p)) clearHeld("special2");
+          } else if (p.canSpecial2) {
             if (p.type === "fire") {
+              p.ducking = false;
               p.attacking = true;
               p.attackType = "dash";
               p.attackHeight = "mid";
@@ -6648,13 +7246,13 @@ if (hpW > 0) {
               p.dashHasHit = false;
               playSfx("dash");
               p.canSpecial2 = false;
-              setManagedTimeout(() => (p.canSpecial2 = true), 2000);
+              setManagedTimeout(() => (p.canSpecial2 = true), abilityCooldown(p, 2000));
               clearHeld("special2");
             } else if (p.type === "ice") {
               projectiles.current.push({ x: p.x + (p.facing > 0 ? p.width : 0), y: p.y + 25, vx: p.facing * 2.2, owner: p, team: p.team, type: "sloworb", attackHeight: "mid", color: "#93c5fd", radius: 12 });
               playSfx("sloworb");
               p.canSpecial2 = false;
-              setManagedTimeout(() => (p.canSpecial2 = true), 10000);
+              setManagedTimeout(() => (p.canSpecial2 = true), abilityCooldown(p, 4000));
               clearHeld("special2");
             } else if (p.type === "psychic") {
               p.vx = 0;
@@ -6667,7 +7265,7 @@ if (hpW > 0) {
               p.purpleCharging = true;
               p.purpleChargeTimer = 0;
               p.canSpecial2 = false;
-              setManagedTimeout(() => (p.canSpecial2 = true), 10000);
+              setManagedTimeout(() => (p.canSpecial2 = true), abilityCooldown(p, 10000));
               clearHeld("special2");
             } else if (p.type === "electric") {
               p.vx = 0;
@@ -6676,20 +7274,8 @@ if (hpW > 0) {
               p.reflecting = true;
               p.reflectTimer = 2;
               playSfx("reflect");
-            } else if (p.type === "explosion" && p.cooldownBoostTimer <= 0) {
-              p.vx = 0;
-              p.blocking = false;
-              p.ducking = false;
-              p.attacking = false;
-              p.attackTimer = 0;
-              p.attackType = "";
-              p.attackHeight = "";
-              p.orangeCharging = true;
-              p.orangeChargeTimer = 0;
-              playSfx("charge_start");
-              p.canSpecial2 = false;
-              setManagedTimeout(() => (p.canSpecial2 = true), 10000);
-              clearHeld("special2");
+            } else if (p.type === "explosion") {
+              if (beginOrangeHarpoon(p)) clearHeld("special2");
             } else if (p.type === "rainbow") {
               if (beginRainbowSummon(p)) clearHeld("special2");
             } else if (p.type === "monochrome") {
@@ -6710,7 +7296,7 @@ if (hpW > 0) {
                 projectiles.current.push({ x: dropX, y: -40, vx: 0, vy: 13, owner: p, team: p.team, type: "whitedrop", attackHeight: "overhead", color: "#f8fafc", radius: 12, knockbackDir });
                 playSfx("white_drop");
                 p.canSpecial2 = false;
-                setManagedTimeout(() => (p.canSpecial2 = true), 3000);
+                setManagedTimeout(() => (p.canSpecial2 = true), abilityCooldown(p, 3000));
                 clearHeld("special2");
               }
             } else if (p.type === "void") {
@@ -6721,6 +7307,13 @@ if (hpW > 0) {
               }
             }
           }
+        }
+
+        if (special3Pressed) {
+          p.inputIntentRevision = (p.inputIntentRevision || 0) + 1;
+          p.inputIntentAction = "special3";
+          p.inputIntentAt = Date.now();
+          if (beginSpecial3(p)) clearHeld("special3");
         }
 
         if (p.type === "void" && p.charging && !getHeld("special2")) {
@@ -6741,7 +7334,7 @@ if (hpW > 0) {
           p.charging = false;
           p.chargeFrames = 0;
           p.canSpecial2 = false;
-          setManagedTimeout(() => (p.canSpecial2 = true), 3000);
+          setManagedTimeout(() => (p.canSpecial2 = true), abilityCooldown(p, 3000));
         }
 
         finishControls();
@@ -6766,7 +7359,7 @@ if (hpW > 0) {
         p.charging = false;
         p.chargeFrames = 0;
         p.canSpecial2 = false;
-        setManagedTimeout(() => (p.canSpecial2 = true), 3000);
+        setManagedTimeout(() => (p.canSpecial2 = true), abilityCooldown(p, 3000));
       }
       finishControls();
     };
@@ -6810,6 +7403,23 @@ if (hpW > 0) {
         if (p.orangeChargeTimer >= 60) {
           p.orangeCharging = false;
           p.orangeChargeTimer = 0;
+          p.cooldownBoostTimer = 600;
+          playSfx("orange_orb");
+        }
+      }
+
+      if (p.blackCharging) {
+        p.blackChargeTimer++;
+        p.vx = 0;
+        p.blocking = false;
+        p.ducking = false;
+        p.attacking = false;
+        p.attackTimer = 0;
+        p.attackType = "";
+        p.attackHeight = "";
+        if (p.blackChargeTimer >= 60) {
+          p.blackCharging = false;
+          p.blackChargeTimer = 0;
           p.cooldownBoostTimer = 600;
           playSfx("orange_orb");
         }
@@ -6903,6 +7513,81 @@ if (hpW > 0) {
       }
 
       if (p.cooldownBoostTimer > 0) p.cooldownBoostTimer--;
+      if (p.damageReducedTimer > 0) p.damageReducedTimer--;
+      if (p.special3VisualTimer > 0) p.special3VisualTimer--;
+      if (p.shotgunVisualTimer > 0) p.shotgunVisualTimer--;
+      if (p.pinkTeleportArmTimer > 0) p.pinkTeleportArmTimer--;
+      if (p.pinkTeleportExplosionTimer > 0) p.pinkTeleportExplosionTimer--;
+      p.snowflakeExpiries = (p.snowflakeExpiries || []).filter((expiry) => expiry > Date.now());
+
+      if (p.special3RollTimer > 0) {
+        p.special3RollTimer--;
+        p.vx = p.facing * 10;
+        p.ducking = true;
+        if (p.special3RollTimer <= 0 || p.x <= 0 || p.x + p.width >= WORLD_W) {
+          p.special3RollTimer = 0;
+          p.attacking = false;
+          p.attackType = "";
+          p.attackHeight = "";
+          p.ducking = false;
+          p.vx = 0;
+        }
+      }
+
+      if (p.yellowWaveChargeTimer > 0) {
+        p.yellowWaveChargeTimer--;
+        if (p.yellowWaveChargeTimer <= 0) {
+          projectiles.current.push({
+            x: p.yellowWaveTargetX,
+            y: groundLevel + 22,
+            vx: 0,
+            vy: -13,
+            owner: p,
+            team: p.team,
+            type: "yellowwave",
+            attackHeight: "low",
+            color: "rgba(250,204,21,0.9)",
+            radius: 20,
+            trackXOnly: true,
+            knockbackDir: p.yellowWaveTargetX >= centerX(p) ? 1 : -1,
+          });
+          playSfx("yellow_spear");
+        }
+      }
+
+      if (p.harpoonTargetId) {
+        const tethered = fighters.find((other) => other.id === p.harpoonTargetId && other.alive);
+        if (!tethered) {
+          p.harpoonTargetId = null;
+          p.harpoonPullTimer = 0;
+        } else if (p.harpoonPullTimer > 0) {
+          p.harpoonPullTimer--;
+          const dx = centerX(p) - centerX(tethered);
+          if (Math.abs(dx) <= p.width * 0.5) {
+            tethered.vx = 0;
+            p.harpoonPullTimer = 0;
+            p.harpoonTargetId = null;
+          } else {
+            tethered.vx = Math.sign(dx) * 14;
+            tethered.vy += (centerY(p) - centerY(tethered)) * 0.06;
+            tethered.hitstun = true;
+            tethered.hitstunTimer = Math.max(tethered.hitstunTimer || 0, 4);
+          }
+        }
+      }
+
+      if (p.thrownLandingPending && p.grounded) {
+        const thrower = fighters.find((other) => other.id === p.thrownById) || p;
+        p.thrownLandingPending = false;
+        p.thrownById = null;
+        p.thrownDirection = 0;
+        p.hitstun = false;
+        applyDamage(thrower, p, "monochromethrow", { attackHeight: "unblockable", isProjectile: true, knockbackDir: 0 });
+        markKOIfNeeded(p);
+        playSfx("hit");
+      } else if (p.thrownLandingPending) {
+        p.vx = (p.thrownDirection || 1) * 18;
+      }
 
       if (p.speedBoostTimer > 0) {
         p.speedBoostTimer--;
@@ -7084,12 +7769,22 @@ if (p.aiBlockHoldTimer > 0) {
       if (p.poisoned && p.poisonTicksLeft > 0) {
         p.poisonTickTimer--;
         if (p.poisonTickTimer <= 0) {
-          if (!(p.type === "rainbow" && p.rainbowTurretTimer > 0) && p.brownInvulnTimer <= 0) p.health -= 1;
+          if (!(p.type === "rainbow" && p.rainbowTurretTimer > 0) && p.brownInvulnTimer <= 0) {
+            if (p.brownOriginalForm) {
+              p.brownMorphHealth -= 1;
+              if (p.brownMorphHealth <= 0) restoreBrownForm(p);
+            } else {
+              p.health -= 1;
+            }
+            const poisonOwner = fighters.find((other) => other.id === p.poisonOwnerId && other.alive);
+            if (poisonOwner) poisonOwner.health = Math.min(poisonOwner.maxHealth || 100, poisonOwner.health + 1);
+          }
           p.poisonTicksLeft--;
           p.poisonTickTimer = 60;
           if (p.poisonTicksLeft <= 0) {
             p.poisoned = false;
             p.poisonTicksLeft = 0;
+            p.poisonOwnerId = null;
           }
         }
       }
@@ -7276,6 +7971,92 @@ if (p.aiBlockHoldTimer > 0) {
     const drawProjectile = (proj) => {
       ctx.save();
 
+      if (proj.type === "greenresidue") {
+        ctx.fillStyle = "rgba(22,163,74,0.62)";
+        ctx.beginPath();
+        ctx.ellipse(proj.x, proj.y - 3, 20, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#14532d";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
+
+      if (proj.type === "graypeak") {
+        ctx.fillStyle = "#6b7280";
+        ctx.strokeStyle = "#1f2937";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(proj.x, proj.y + proj.height);
+        ctx.lineTo(proj.x + proj.width * 0.18, proj.y + proj.height * 0.35);
+        ctx.lineTo(proj.x + proj.width * 0.42, proj.y + proj.height * 0.58);
+        ctx.lineTo(proj.x + proj.width * 0.62, proj.y);
+        ctx.lineTo(proj.x + proj.width, proj.y + proj.height);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
+
+      if (proj.type === "snowflake") {
+        ctx.strokeStyle = "#bfdbfe";
+        ctx.lineWidth = 3;
+        for (let angle = 0; angle < Math.PI; angle += Math.PI / 3) {
+          ctx.beginPath();
+          ctx.moveTo(proj.x - Math.cos(angle) * proj.radius, proj.y - Math.sin(angle) * proj.radius);
+          ctx.lineTo(proj.x + Math.cos(angle) * proj.radius, proj.y + Math.sin(angle) * proj.radius);
+          ctx.stroke();
+        }
+        ctx.restore();
+        return;
+      }
+
+      if (proj.type === "yellowwave") {
+        ctx.fillStyle = "rgba(250,204,21,0.7)";
+        ctx.beginPath();
+        ctx.ellipse(proj.x, proj.y, 20, 34, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#a16207";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
+
+      if (proj.type === "rainbowgrenade" || proj.type === "rainbowblast") {
+        const colors = RAINBOW_COLORS;
+        colors.forEach((color, index) => {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = Math.max(2, proj.radius / colors.length);
+          ctx.beginPath();
+          ctx.arc(proj.x, proj.y, Math.max(2, proj.radius - index * (proj.radius / colors.length)), 0, Math.PI * 2);
+          ctx.stroke();
+        });
+        ctx.restore();
+        return;
+      }
+
+      if (proj.type === "orangeharpoon") {
+        const direction = Math.sign(proj.vx || 1);
+        ctx.strokeStyle = "#7c2d12";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(proj.x - direction * 18, proj.y);
+        ctx.lineTo(proj.x + direction * 14, proj.y);
+        ctx.stroke();
+        ctx.fillStyle = "#fb923c";
+        ctx.beginPath();
+        ctx.moveTo(proj.x + direction * 18, proj.y);
+        ctx.lineTo(proj.x + direction * 8, proj.y - 7);
+        ctx.lineTo(proj.x + direction * 8, proj.y + 7);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        return;
+      }
+
       if (proj.type === "yellowspear") {
         ctx.strokeStyle = "#111827";
         ctx.lineWidth = 6;
@@ -7419,6 +8200,52 @@ if (p.aiBlockHoldTimer > 0) {
       const drawHeight = p.ducking ? p.height * 0.6 : p.height;
       const drawY = p.ducking ? p.y + p.height * 0.4 : p.y;
 
+      if (p.pinkTeleportMarker) {
+        ctx.globalAlpha = 0.28;
+        ctx.fillStyle = "#ec4899";
+        ctx.fillRect(p.pinkTeleportMarker.x, p.pinkTeleportMarker.y, p.width, p.height);
+        ctx.strokeStyle = "#f9a8d4";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(p.pinkTeleportMarker.x, p.pinkTeleportMarker.y, p.width, p.height);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.harpoonTargetId) {
+        const tethered = fighters.find((other) => other.id === p.harpoonTargetId && other.alive);
+        if (tethered) {
+          ctx.strokeStyle = "#f97316";
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(centerX(p), centerY(p));
+          ctx.lineTo(centerX(tethered), centerY(tethered));
+          ctx.stroke();
+        }
+      }
+
+      if (p.special3VisualTimer > 0) {
+        ctx.strokeStyle = "#fb923c";
+        ctx.lineWidth = 9;
+        ctx.beginPath();
+        ctx.arc(centerX(p), p.y + 4, 78, Math.PI * 1.08, Math.PI * 1.92);
+        ctx.stroke();
+      }
+
+      if (p.yellowWaveChargeTimer > 0) {
+        ctx.globalAlpha = 0.35 + Math.sin(Date.now() / 45) * 0.12;
+        ctx.fillStyle = "#fde047";
+        ctx.fillRect(p.x - 7, drawY - 7, p.width + 14, drawHeight + 14);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.pinkTeleportExplosionTimer > 0) {
+        ctx.globalAlpha = p.pinkTeleportExplosionTimer / 18;
+        ctx.fillStyle = "rgba(236,72,153,0.5)";
+        ctx.beginPath();
+        ctx.arc(centerX(p), centerY(p), 72, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+
       if (p.transparentBurrowing) {
         ctx.globalAlpha = 0.55;
         ctx.fillStyle = "rgba(15,23,42,0.7)";
@@ -7434,6 +8261,15 @@ if (p.aiBlockHoldTimer > 0) {
         ctx.globalAlpha = 0.45;
         ctx.fillStyle = "rgba(229,231,235,0.75)";
         ctx.fillRect(p.x - 8, 0, p.width + 16, groundLevel);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.blackCharging) {
+        ctx.globalAlpha = 0.75;
+        ctx.strokeStyle = "#020617";
+        ctx.lineWidth = 6;
+        const chargeSize = Math.min(p.blackChargeTimer / 3, 20);
+        ctx.strokeRect(p.x - chargeSize / 2, drawY - chargeSize / 2, p.width + chargeSize, drawHeight + chargeSize);
         ctx.globalAlpha = 1;
       }
 
@@ -7617,9 +8453,20 @@ if (p.aiBlockHoldTimer > 0) {
       }
 
       if (p.cooldownBoostTimer > 0) {
-        ctx.globalAlpha = 0.35;
-        ctx.fillStyle = "#fdba74";
-        ctx.fillRect(p.x - 10, drawY - 10, p.width + 20, drawHeight + 20);
+        ctx.globalAlpha = 0.7;
+        ctx.strokeStyle = "#020617";
+        ctx.lineWidth = 5;
+        ctx.strokeRect(p.x - 10, drawY - 10, p.width + 20, drawHeight + 20);
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.damageReducedTimer > 0) {
+        ctx.globalAlpha = 0.72;
+        ctx.strokeStyle = "rgba(226,232,240,0.72)";
+        ctx.lineWidth = 5;
+        ctx.setLineDash([7, 5]);
+        ctx.strokeRect(p.x - 9, drawY - 9, p.width + 18, drawHeight + 18);
+        ctx.setLineDash([]);
         ctx.globalAlpha = 1;
       }
 
@@ -7712,6 +8559,39 @@ if (p.type === "rainbow") {
 }
 ctx.fillRect(p.x, drawY, p.width, drawHeight);
 
+if ((p.snowflakeExpiries || []).length > 0) {
+  const markX = p.x + p.width / 2;
+  const markY = drawY + drawHeight / 2;
+  ctx.strokeStyle = "#bfdbfe";
+  ctx.lineWidth = 2;
+  for (let angle = 0; angle < Math.PI; angle += Math.PI / 3) {
+    ctx.beginPath();
+    ctx.moveTo(markX - Math.cos(angle) * 10, markY - Math.sin(angle) * 10);
+    ctx.lineTo(markX + Math.cos(angle) * 10, markY + Math.sin(angle) * 10);
+    ctx.stroke();
+  }
+}
+
+if (p.brownOriginalForm) {
+  ctx.fillStyle = "#92400e";
+  ctx.beginPath();
+  ctx.arc(p.x + p.width / 2, drawY + drawHeight / 2, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#451a03";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+if (p.shotgunVisualTimer > 0) {
+  const gunX = p.x + (p.facing > 0 ? p.width : -18);
+  const gunY = drawY + drawHeight * 0.55;
+  ctx.fillStyle = "#7c2d12";
+  ctx.fillRect(gunX, gunY, 18, 7);
+  ctx.strokeStyle = "#111827";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(gunX, gunY, 18, 7);
+}
+
 if (p.type === "transparent") {
   const square = 10;
   for (let yy = 0; yy < drawHeight; yy += square) {
@@ -7761,6 +8641,16 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
         ctx.fillStyle = "rgba(17,24,39,0.85)";
         ctx.fillRect(p.x - 2, p.y + p.height + 6, barW, barH);
         ctx.fillStyle = p.color;
+        ctx.fillRect(p.x - 2, p.y + p.height + 6, barW * hpPct, barH);
+      }
+
+      if (p.brownOriginalForm) {
+        const barW = 44;
+        const barH = 5;
+        const hpPct = Math.max(0, Math.min(1, p.brownMorphHealth / 5));
+        ctx.fillStyle = "rgba(17,24,39,0.85)";
+        ctx.fillRect(p.x - 2, p.y + p.height + 6, barW, barH);
+        ctx.fillStyle = "#92400e";
         ctx.fillRect(p.x - 2, p.y + p.height + 6, barW * hpPct, barH);
       }
 
@@ -7914,6 +8804,20 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 markKOIfNeeded(defender);
               }
             }
+          } else if (attacker.attackType === "purpleroll") {
+            for (const defender of fighters) {
+              if (!defender.alive || defender.team === attacker.team || attacker.special3HasHit) continue;
+              if (checkHitboxCollision(attacker, defender)) {
+                applyDamage(attacker, defender, "purpleroll", { attackHeight: "low" });
+                attacker.special3HasHit = true;
+                attacker.special3RollTimer = 0;
+                attacker.attackTimer = 0;
+                attacker.attacking = false;
+                attacker.ducking = false;
+                attacker.vx = 0;
+                markKOIfNeeded(defender);
+              }
+            }
           } else {
             if (attacker.attackTimer === 12) {
               for (const defender of fighters) {
@@ -7930,6 +8834,34 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
         for (let i = projectiles.current.length - 1; i >= 0; i--) {
           const proj = projectiles.current[i];
+          if (proj.type === "greenresidue") {
+            proj.lifeFrames--;
+            proj.residueTickFrames = proj.residueTickFrames || {};
+            fighters.filter((target) => target.alive && target.team !== proj.team).forEach((target) => {
+              const standingInPuddle = Math.abs(centerX(target) - proj.x) <= 20 && Math.abs(target.y + target.height - proj.y) <= 24;
+              if (!standingInPuddle) return;
+              const nextTick = proj.residueTickFrames[target.id] || 0;
+              if (nextTick <= 0) {
+                applyDamage(proj.owner, target, "greenresidue", { attackHeight: "unblockable", isProjectile: true, knockbackDir: 0 });
+                markKOIfNeeded(target);
+                proj.residueTickFrames[target.id] = 60;
+              } else {
+                proj.residueTickFrames[target.id] = nextTick - 1;
+              }
+            });
+            if (proj.lifeFrames <= 0) projectiles.current.splice(i, 1);
+            continue;
+          }
+
+          if (proj.type === "graypeak" || proj.type === "rainbowblast") {
+            proj.lifeFrames--;
+            if (proj.lifeFrames <= 0) {
+              if (proj.type === "graypeak" && proj.owner) proj.owner.grayPeakId = null;
+              projectiles.current.splice(i, 1);
+            }
+            continue;
+          }
+
           if (proj.trackXOnly && proj.owner?.alive) {
             const realTarget = getNearestEnemy(proj.owner);
             const target = !proj.owner.isHuman && realTarget ? getAiPerceivedTarget(proj.owner, realTarget) : realTarget;
@@ -7949,8 +8881,52 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
               proj.vy = (dy / distance) * speed;
             }
           }
+          const previousX = proj.x;
+          const previousY = proj.y;
+          if (proj.gravity) proj.vy = (proj.vy || 0) + proj.gravity;
           proj.x += proj.vx;
           proj.y += proj.vy || 0;
+
+          if (!proj.passesPlatforms && (proj.type === "greenarc" || proj.type === "rainbowgrenade")) {
+            const surface = platforms.find((platform) => {
+              const withinX = proj.x + proj.radius >= platform.x && proj.x - proj.radius <= platform.x + platform.width;
+              const crossedTop = previousY + proj.radius <= platform.y && proj.y + proj.radius >= platform.y;
+              const crossedSide = previousX !== proj.x && proj.y >= platform.y && proj.y <= platform.y + platform.height && ((previousX < platform.x && proj.x >= platform.x) || (previousX > platform.x + platform.width && proj.x <= platform.x + platform.width));
+              return withinX && (crossedTop || crossedSide);
+            });
+            if (surface) {
+              if (proj.type === "greenarc") {
+                explodeGreenArc(proj, proj.x, surface.y);
+                projectiles.current.splice(i, 1);
+                continue;
+              }
+              proj.bounceCount = (proj.bounceCount || 0) + 1;
+              if (proj.bounceCount >= 3) {
+                explodeRainbowGrenade(proj);
+                projectiles.current.splice(i, 1);
+                continue;
+              }
+              proj.y = surface.y - proj.radius - 1;
+              proj.vy = -Math.max(5, Math.abs(proj.vy) * 0.58);
+              proj.vx = Math.sign(proj.vx || proj.owner?.facing || 1) * (proj.bounceCount === 1 ? 4.2 : 3.4);
+              playSfx("block");
+            }
+          }
+
+          const blockingPeakIndex = proj.passesPlatforms ? -1 : projectiles.current.findIndex((peak) => peak.type === "graypeak" && peak.team !== proj.team && peak.lifeFrames > 0 && proj.x + proj.radius >= peak.x && proj.x - proj.radius <= peak.x + peak.width && proj.y + proj.radius >= peak.y && proj.y - proj.radius <= peak.y + peak.height);
+          if (blockingPeakIndex >= 0) {
+            const peak = projectiles.current[blockingPeakIndex];
+            if (proj.type === "greenarc") explodeGreenArc(proj, proj.x, proj.y);
+            peak.health -= Math.max(2, proj.damage || (proj.type === "shotgunpellet" ? 4 : 5));
+            if (peak.health <= 0) {
+              if (peak.owner) peak.owner.grayPeakId = null;
+              projectiles.current.splice(blockingPeakIndex, 1);
+              if (blockingPeakIndex < i) i--;
+            }
+            const currentIndex = projectiles.current.indexOf(proj);
+            if (currentIndex >= 0) projectiles.current.splice(currentIndex, 1);
+            continue;
+          }
 
           let handledProjectile = false;
           for (const target of fighters) {
@@ -7980,7 +8956,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 break;
               }
 
-              if (target.reflecting) {
+              if (target.reflecting && proj.type !== "rainbowgrenade") {
                 if (proj.type === "yellowspear" && proj.owner) proj.owner.spearLocked = false;
 
                 const oldVx = proj.vx || 0;
@@ -8002,12 +8978,33 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 break;
               }
 
-              if (proj.type === "chargeball") {
+              if (proj.type === "rainbowgrenade") {
+                explodeRainbowGrenade(proj, target);
+              } else if (proj.type === "greenarc") {
+                explodeGreenArc(proj, proj.x, Math.min(groundLevel, target.y + target.height), target);
+              } else if (proj.type === "orangeharpoon") {
+                const blocked = canBlockAttack(proj.owner, target, "harpoon", proj.attackHeight);
+                applyDamage(proj.owner, target, "harpoon", {
+                  attackHeight: proj.attackHeight,
+                  isProjectile: true,
+                  knockbackDir: 0,
+                });
+                if (!blocked && proj.owner?.type === "explosion") proj.owner.harpoonTargetId = target.id;
+              } else if (proj.type === "browncolorball") {
+                const blocked = canBlockAttack(proj.owner, target, "browncolorball", proj.attackHeight);
+                applyDamage(proj.owner, target, "browncolorball", {
+                  attackHeight: proj.attackHeight,
+                  isProjectile: true,
+                  knockbackDir: Math.sign(proj.vx) || 1,
+                });
+                if (!blocked && proj.owner?.type === "brown") morphBrownInto(proj.owner, target);
+              } else if (proj.type === "chargeball") {
                 breakSpearStunIfNeeded(target);
                 breakFreezeIfNeeded(target);
 
                 const blocked = canBlockAttack(proj.owner, target, "chargeball", proj.attackHeight);
                 let actualDamage = target.damageAmpTimer > 0 ? proj.damage * 2 : proj.damage;
+                if (proj.owner?.damageReducedTimer > 0) actualDamage = Math.ceil(actualDamage * 0.5);
                 let knockback = Math.min(24, 6 + Math.floor((proj.damage || 1) / 2));
                 if (target.brownCharging) {
                   target.brownCharging = false;
@@ -8084,22 +9081,19 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                   ignoreRainbowInvulnerable: !!proj.reflected,
                 });
               } else if (proj.type === "poisonorb") {
-                const blocked = canBlockAttack(proj.owner, target, "poisonorb", proj.attackHeight);
-                const damageDone = applyDamage(proj.owner, target, "poisonorb", {
+                applyDamage(proj.owner, target, "poisonorb", {
                   attackHeight: proj.attackHeight,
                   isProjectile: true,
                   knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
                   ignoreRainbowInvulnerable: !!proj.reflected,
                 });
-                if (!blocked && damageDone > 0 && proj.owner?.alive && proj.owner.type !== "monochrome") {
-                  proj.owner.health = Math.min(proj.owner.maxHealth || 100, proj.owner.health + 5);
-                }
               } else {
                 applyDamage(proj.owner, target, proj.type, {
                   attackHeight: proj.attackHeight,
                   isProjectile: true,
                   knockbackDir: proj.knockbackDir ?? (Math.sign(proj.vx) || 1),
                   ignoreRainbowInvulnerable: !!proj.reflected,
+                  additiveKnockback: !!proj.additiveKnockback,
                 });
               }
 
@@ -8114,6 +9108,10 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
 
           if (proj.x < -50 || proj.x > WORLD_W + 50 || proj.y < -90 || proj.y > WORLD_H + 90) {
             if (proj.type === "yellowspear" && proj.owner) proj.owner.spearLocked = false;
+            if (proj.type === "orangeharpoon" && proj.owner) {
+              proj.owner.harpoonTargetId = null;
+              proj.owner.harpoonPullTimer = 0;
+            }
             if (proj.type === "brownshift") {
               const phaseOwner = proj.phaseOwner || fighters.find((p) => p.id === proj.phaseOwnerId) || proj.owner;
               landBrownShift(phaseOwner, proj.x < -50 ? 0 : WORLD_W - (phaseOwner?.width || 40));
@@ -8288,7 +9286,6 @@ useEffect(() => {
                   } catch (e) {}
                   socketRef.current.emit('char:selected', { matchId, character: c });
                 }}
-                note={fighterNote(c)}
                 locked={locked}
                 lockText={lockTextForColor(c)}
               />
@@ -8467,6 +9464,7 @@ useEffect(() => {
         <Row title="Kick" player={player} action="kick" currentKey={binds.kick} />
         <Row title="Special Move 1" player={player} action="special1" currentKey={binds.special1} />
         <Row title="Special Move 2" player={player} action="special2" currentKey={binds.special2} />
+        <Row title="Special Move 3" player={player} action="special3" currentKey={binds.special3} />
       </>
     );
 
@@ -8481,6 +9479,7 @@ useEffect(() => {
         <ControllerRow title="Kick" action="kick" currentInput={binds.kick} />
         <ControllerRow title="Special Move 1" action="special1" currentInput={binds.special1} />
         <ControllerRow title="Special Move 2" action="special2" currentInput={binds.special2} />
+        <ControllerRow title="Special Move 3" action="special3" currentInput={binds.special3} />
       </>
     );
 
@@ -8799,7 +9798,7 @@ useEffect(() => {
     );
   };
 
-  const ColorCard = ({ color, selected, onClick, note, locked = false, lockText = "" }) => {
+  const ColorCard = ({ color, selected, onClick, locked = false, lockText = "" }) => {
     const glow =
       color === "red"
         ? "rgba(239, 68, 68, 0.2)"
@@ -8885,7 +9884,6 @@ useEffect(() => {
           <div className={`w-24 h-32 rounded-2xl mx-auto border-4 ${bodyClass}`} />
         </div>
         <h2 className="text-2xl font-light text-gray-900 mb-2 capitalize">{color}</h2>
-        <p className="text-xs font-light text-gray-500">{note}</p>
         {locked && (
           <div className="absolute inset-x-4 bottom-4 rounded-2xl bg-gray-900/90 text-white text-[11px] font-light px-3 py-2">
             {lockText}
@@ -9119,7 +10117,7 @@ useEffect(() => {
                   style={{ boxShadow: disabled ? "none" : "0 10px 30px rgba(0,0,0,0.06)" }}
                 >
                   <div className="text-2xl font-light text-gray-900">{m.title}</div>
-                  <div className="text-sm font-light text-gray-500 mt-2">{m.desc}</div>
+                  {m.key === "login" && <div className="text-sm font-light text-gray-500 mt-2">{m.desc}</div>}
                 </button>
               );
             })}
@@ -9538,7 +10536,6 @@ useEffect(() => {
 
                   setManagedTimeout(() => proceedAfterP1(), 0);
                 }}
-                note={fighterNote(c)}
                 locked={locked}
                 lockText={lockTextForColor(c)}
               />
@@ -9579,7 +10576,6 @@ useEffect(() => {
                   setOpp1Color(c);
                   setManagedTimeout(() => proceedAfterOpp1(), 0);
                 }}
-                note={fighterNote(c)}
                 locked={locked}
                 lockText={lockTextForColor(c)}
               />
@@ -9624,7 +10620,6 @@ useEffect(() => {
                   setOpp2Color(c);
                   setManagedTimeout(() => proceedAfterOpp2(), 0);
                 }}
-                note={fighterNote(c)}
                 locked={locked}
                 lockText={lockTextForColor(c)}
               />
@@ -9668,7 +10663,6 @@ useEffect(() => {
                   setP2Color(c);
                   setManagedTimeout(() => proceedAfterP2(), 0);
                 }}
-                note={fighterNote(c)}
                 locked={locked}
                 lockText={lockTextForColor(c)}
               />
@@ -9787,7 +10781,6 @@ useEffect(() => {
                   </div>
                 </div>
                 <h2 className="text-2xl font-light text-gray-900 mb-2">{s.title}</h2>
-                <p className="text-sm font-light text-gray-500">{s.desc}</p>
               </button>
             ))}
           </div>
