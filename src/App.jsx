@@ -2772,7 +2772,7 @@ const toggleFullscreen = async () => {
     const checkHitboxCollision = (attacker, defender) => {
       if (!attacker.attacking) return false;
       if (!defender.alive) return false;
-      if (attacker.attackHeight === "high" && defender.ducking) return false;
+      if (attacker.attackHeight === "high" && defender.ducking && !defender.blocking) return false;
       return rectOverlap(attacker.hitbox, defender.hurtbox);
     };
 
@@ -2939,7 +2939,7 @@ const toggleFullscreen = async () => {
       if (h === "low") return defender.ducking;
       if (h === "overhead") return !defender.ducking;
       if (h === "mid") return true;
-      if (h === "high") return !defender.ducking;
+      if (h === "high") return true;
       return false;
     };
 
@@ -9128,7 +9128,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
             if (target.brownPhasing) continue;
             if (target.transparentBurrowing) continue;
 
-            if (proj.attackHeight === "high" && target.ducking) continue;
+            if (proj.attackHeight === "high" && target.ducking && !target.blocking) continue;
 
             if (proj.type === "yellowwave") {
               const waveRect = {
