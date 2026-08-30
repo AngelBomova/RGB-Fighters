@@ -192,6 +192,7 @@ function FighterGame() {
   const [ladderWin, setLadderWin] = useState(false);
   const [ladderOppOrder, setLadderOppOrder] = useState([]);
   const ladderAchievementSentRef = useRef("");
+  const [ladderExitConfirmOpen, setLadderExitConfirmOpen] = useState(false);
 
   const canvasRef = useRef(null);
 
@@ -999,6 +1000,14 @@ const toggleFullscreen = async () => {
           setListeningFor(null);
           keysPressed.current = {};
         }
+      } else if (
+        menuStep === "playing" &&
+        mode !== "online" &&
+        mode !== "online2v2" &&
+        pressed["xbox:menu"] &&
+        !previousPressed["xbox:menu"]
+      ) {
+        setSettingsOpen((open) => !open);
       }
 
       if ((mode === "online" || mode === "online2v2") && menuStep === "playing" && onlineMatchRef.current?.matchId) {
@@ -1696,6 +1705,7 @@ const toggleFullscreen = async () => {
   }, [token]);
 
   const goHome = () => {
+    setLadderExitConfirmOpen(false);
     const hasActiveOnlineMatch = !!onlineMatchRef.current?.matchId || !!charSelect || !!matched;
     if (hasActiveOnlineMatch) {
       sendLeaveForfeit();
@@ -1733,6 +1743,7 @@ const toggleFullscreen = async () => {
 
   const startModeFlow = (m) => {
     playSfx("menu_select");
+    setLadderExitConfirmOpen(false);
     setMode(m);
     setSettingsOpen(false);
     setListeningFor(null);
@@ -1931,19 +1942,19 @@ const toggleFullscreen = async () => {
         reactionTime: 20,
         observationJitter: 10,
         defenseReaction: 9,
-        attackChance: 0.68,
+        attackChance: 0.78,
         blockChance: 0.46,
         projectileBlockChance: 0.66,
-        specialChance: 0.34,
+        specialChance: 0.46,
         punishChance: 0.56,
         antiAirChance: 0.5,
         jumpChance: 0.22,
         accuracy: 0.74,
-        aggression: 0.88,
-        neutralPressureChance: 0.56,
+        aggression: 1,
+        neutralPressureChance: 0.64,
         mistakeChance: 0.16,
         spacing: 96,
-        meleeRange: 90,
+        meleeRange: 96,
         retreatRange: 49,
         projectileRange: 190,
         projectileReactRange: 275,
@@ -1965,8 +1976,8 @@ const toggleFullscreen = async () => {
         defenseBias: 0.8,
         maxDefenseHold: 24,
         maxLockFrames: 138,
-        attackCooldown: 18,
-        specialCooldown: 74,
+        attackCooldown: 14,
+        specialCooldown: 60,
         blockCooldown: 34,
         jumpCooldown: 58,
         movementCommit: 26,
@@ -1976,19 +1987,19 @@ const toggleFullscreen = async () => {
         reactionTime: 10,
         observationJitter: 6,
         defenseReaction: 5,
-        attackChance: 0.86,
+        attackChance: 0.92,
         blockChance: 0.67,
         projectileBlockChance: 0.82,
-        specialChance: 0.5,
+        specialChance: 0.64,
         punishChance: 0.82,
         antiAirChance: 0.76,
         jumpChance: 0.34,
         accuracy: 0.89,
-        aggression: 1.08,
-        neutralPressureChance: 0.72,
+        aggression: 1.18,
+        neutralPressureChance: 0.8,
         mistakeChance: 0.06,
         spacing: 82,
-        meleeRange: 96,
+        meleeRange: 102,
         retreatRange: 43,
         projectileRange: 145,
         projectileReactRange: 350,
@@ -2010,8 +2021,8 @@ const toggleFullscreen = async () => {
         defenseBias: 0.93,
         maxDefenseHold: 20,
         maxLockFrames: 118,
-        attackCooldown: 11,
-        specialCooldown: 56,
+        attackCooldown: 8,
+        specialCooldown: 42,
         blockCooldown: 23,
         jumpCooldown: 43,
         movementCommit: 18,
@@ -2021,19 +2032,19 @@ const toggleFullscreen = async () => {
         reactionTime: 6,
         observationJitter: 4,
         defenseReaction: 3,
-        attackChance: 0.94,
+        attackChance: 0.98,
         blockChance: 0.78,
         projectileBlockChance: 0.9,
-        specialChance: 0.65,
+        specialChance: 0.82,
         punishChance: 0.93,
         antiAirChance: 0.9,
         jumpChance: 0.46,
         accuracy: 0.95,
-        aggression: 1.22,
-        neutralPressureChance: 0.86,
+        aggression: 1.34,
+        neutralPressureChance: 0.94,
         mistakeChance: 0.025,
         spacing: 72,
-        meleeRange: 101,
+        meleeRange: 108,
         retreatRange: 38,
         projectileRange: 120,
         projectileReactRange: 410,
@@ -2055,8 +2066,8 @@ const toggleFullscreen = async () => {
         defenseBias: 0.97,
         maxDefenseHold: 16,
         maxLockFrames: 104,
-        attackCooldown: 7,
-        specialCooldown: 42,
+        attackCooldown: 5,
+        specialCooldown: 30,
         blockCooldown: 17,
         jumpCooldown: 34,
         movementCommit: 12,
@@ -2740,6 +2751,11 @@ const toggleFullscreen = async () => {
             hitboxWidth = 50;
             hitboxHeight = drawHeight;
             break;
+          case "monochromegrab":
+            hitboxWidth = 112;
+            hitboxHeight = drawHeight * 0.48;
+            hitboxY = drawY + drawHeight * 0.22;
+            break;
           default:
             hitboxWidth = 0;
         }
@@ -2994,7 +3010,7 @@ const toggleFullscreen = async () => {
           hitstunFrames = 16;
           break;
         case "snowflake":
-          damage = 2;
+          damage = 3;
           knockback = 3;
           hitstunFrames = 8;
           break;
@@ -3004,7 +3020,7 @@ const toggleFullscreen = async () => {
           hitstunFrames = 12;
           break;
         case "greenresidue":
-          damage = 1;
+          damage = 2;
           knockback = 0;
           hitstunFrames = 0;
           break;
@@ -3031,11 +3047,12 @@ const toggleFullscreen = async () => {
           break;
         case "yellowwave":
           damage = 5;
-          knockback = 18;
+          knockback = 10;
+          launchUp = true;
           hitstunFrames = 14;
           break;
         case "graypeak":
-          damage = 5;
+          damage = 6;
           knockback = 2;
           hitstunFrames = 60;
           break;
@@ -3061,7 +3078,7 @@ const toggleFullscreen = async () => {
           hitstunFrames = 20;
           break;
         case "rainbowgrenade":
-          damage = 15;
+          damage = 18;
           knockback = 8;
           launchUp = true;
           hitstunFrames = 22;
@@ -3154,13 +3171,13 @@ const toggleFullscreen = async () => {
           hitstunFrames = 18;
           break;
         case "iceball":
-          damage = 3;
+          damage = 4;
           knockback = 4;
           hitstunFrames = 10;
           freezeFrames = 180;
           break;
         case "sloworb":
-          damage = 8;
+          damage = 9;
           knockback = 5;
           hitstunFrames = 14;
           applyJumpDisable = 900;
@@ -3904,7 +3921,7 @@ const explodeGreenArc = (proj, impactX, impactY, directTarget = null) => {
     type: "greenresidue",
     attackHeight: "unblockable",
     color: "rgba(34,197,94,0.72)",
-    radius: 20,
+    radius: 60,
     lifeFrames: 180,
     residueTickFrames: {},
   });
@@ -4150,6 +4167,10 @@ const beginSpecial3 = (fighter, targetOverride = null) => {
     const inFront = fighter.facing > 0 ? centerX(target) >= centerX(fighter) : centerX(target) <= centerX(fighter);
     if (!inFront || Math.abs(centerX(target) - centerX(fighter)) > 105 || Math.abs(centerY(target) - centerY(fighter)) > 55) return false;
     const wasHitstunned = fighter.hitstun;
+    fighter.attacking = true;
+    fighter.attackType = "monochromegrab";
+    fighter.attackHeight = "unblockable";
+    fighter.attackTimer = 10;
     applyDamage(fighter, target, "monochromegrab", { attackHeight: "unblockable", knockbackDir: fighter.facing });
     if (!wasHitstunned && !fighter.hitstun) {
       target.thrownById = fighter.id;
@@ -5736,7 +5757,7 @@ const tryAiAbility = (ai, opp, sameLane, incoming, options = {}) => {
 
   tryAbilityAction(
     `${ai.type}Special3`,
-    (ai.canSpecial3 || (ai.type === "pink" && ai.pinkTeleportMarker) || (ai.type === "explosion" && ai.harpoonTargetId)) && wantsAbility(`${ai.type}Special3`, thirdMoveContext, 0.38),
+    (ai.canSpecial3 || (ai.type === "pink" && ai.pinkTeleportMarker) || (ai.type === "explosion" && ai.harpoonTargetId)) && wantsAbility(`${ai.type}Special3`, thirdMoveContext, 0.56),
     () => beginSpecial3(ai, opp)
   );
 
@@ -7590,8 +7611,10 @@ if (hpW > 0) {
       if (p.yellowWaveChargeTimer > 0) {
         p.yellowWaveChargeTimer--;
         if (p.yellowWaveChargeTimer <= 0) {
+          const waveTarget = getNearestEnemy(p);
+          const waveX = waveTarget ? centerX(waveTarget) : p.yellowWaveTargetX;
           projectiles.current.push({
-            x: p.yellowWaveTargetX,
+            x: waveX,
             y: groundLevel + 22,
             vx: 0,
             vy: -13,
@@ -7600,10 +7623,10 @@ if (hpW > 0) {
             type: "yellowwave",
             attackHeight: "low",
             color: "rgba(250,204,21,0.9)",
-            radius: 20,
-            width: 44,
-            height: 92,
-            knockbackDir: p.yellowWaveTargetX >= centerX(p) ? 1 : -1,
+            radius: 30,
+            width: 60,
+            height: 120,
+            knockbackDir: waveX >= centerX(p) ? 1 : -1,
           });
           playSfx("yellow_spear");
         }
@@ -7626,6 +7649,10 @@ if (hpW > 0) {
             tethered.vy += (centerY(p) - centerY(tethered)) * 0.06;
             tethered.hitstun = true;
             tethered.hitstunTimer = Math.max(tethered.hitstunTimer || 0, 4);
+            if (p.harpoonPullTimer <= 0) {
+              tethered.vx = 0;
+              p.harpoonTargetId = null;
+            }
           }
         }
       }
@@ -8028,7 +8055,7 @@ if (p.aiBlockHoldTimer > 0) {
       if (proj.type === "greenresidue") {
         ctx.fillStyle = "rgba(22,163,74,0.62)";
         ctx.beginPath();
-        ctx.ellipse(proj.x, proj.y - 3, 20, 6, 0, 0, Math.PI * 2);
+        ctx.ellipse(proj.x, proj.y - 3, proj.radius || 60, 11, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = "#14532d";
         ctx.lineWidth = 2;
@@ -8299,7 +8326,7 @@ if (p.aiBlockHoldTimer > 0) {
       }
 
       if (p.special3VisualTimer > 0) {
-        ctx.strokeStyle = "#fb923c";
+        ctx.strokeStyle = "#dc2626";
         ctx.lineWidth = 9;
         ctx.beginPath();
         ctx.arc(centerX(p), p.y + 4, 78, Math.PI * 1.08, Math.PI * 1.92);
@@ -8739,13 +8766,40 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
       if (p.attacking && p.hitbox.width > 0) {
   ctx.save();
 
-  ctx.globalAlpha = 0.85;
-  ctx.fillStyle = p.lightColor;
-  ctx.fillRect(p.hitbox.x, p.hitbox.y, p.hitbox.width, p.hitbox.height);
+  if (p.attackType === "monochromegrab") {
+    const dir = p.facing > 0 ? 1 : -1;
+    const armStartX = p.facing > 0 ? p.x + p.width - 2 : p.x + 2;
+    const armY = drawY + drawHeight * 0.42;
+    const armEndX = armStartX + dir * 104;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#020617";
+    ctx.lineWidth = 18;
+    ctx.beginPath();
+    ctx.moveTo(armStartX, armY);
+    ctx.lineTo(armEndX, armY);
+    ctx.stroke();
+    ctx.strokeStyle = "#f8fafc";
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(armStartX, armY);
+    ctx.lineTo(armEndX, armY);
+    ctx.stroke();
+    ctx.fillStyle = "#020617";
+    ctx.beginPath();
+    ctx.arc(armEndX, armY, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#f8fafc";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+  } else {
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = p.lightColor;
+    ctx.fillRect(p.hitbox.x, p.hitbox.y, p.hitbox.width, p.hitbox.height);
 
-  ctx.strokeStyle = "#111827";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(p.hitbox.x, p.hitbox.y, p.hitbox.width, p.hitbox.height);
+    ctx.strokeStyle = "#111827";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(p.hitbox.x, p.hitbox.y, p.hitbox.width, p.hitbox.height);
+  }
 
   ctx.restore();
 }
@@ -8977,7 +9031,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
             proj.lifeFrames--;
             proj.residueTickFrames = proj.residueTickFrames || {};
             fighters.filter((target) => target.alive && target.team !== proj.team).forEach((target) => {
-              const standingInPuddle = Math.abs(centerX(target) - proj.x) <= 20 && Math.abs(target.y + target.height - proj.y) <= 24;
+              const standingInPuddle = Math.abs(centerX(target) - proj.x) <= (proj.radius || 60) && Math.abs(target.y + target.height - proj.y) <= 24;
               if (!standingInPuddle) return;
               const nextTick = proj.residueTickFrames[target.id] || 0;
               if (nextTick <= 0) {
@@ -10966,6 +11020,15 @@ useEffect(() => {
     const ladderLabel = mode === "ladder" ? `Ladder Match ${ladderIndex + 1} / ${LADDER_TOTAL_MATCHES}` : null;
 
     const onExit = () => {
+      if (mode === "ladder") {
+        setLadderExitConfirmOpen(true);
+        return;
+      }
+      goHome();
+    };
+
+    const confirmLadderExit = () => {
+      setLadderExitConfirmOpen(false);
       goHome();
     };
 
@@ -11018,6 +11081,23 @@ useEffect(() => {
         <GlobalSettingsButton />
         <SettingsModal />
 
+        {ladderExitConfirmOpen && mode === "ladder" && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/35">
+            <div className="bg-white/95 backdrop-blur rounded-3xl p-8 border border-gray-200 text-center max-w-md mx-6">
+              <div className="text-2xl font-light text-gray-900 mb-3">Are you sure you want to return home?</div>
+              <div className="text-sm text-gray-600 font-light mb-7">Leaving now resets your ladder run.</div>
+              <div className="flex gap-3 justify-center">
+                <button onClick={confirmLadderExit} className="rounded-2xl px-6 py-3 bg-red-600 text-white hover:opacity-90 transition">
+                  Return Home
+                </button>
+                <button onClick={() => setLadderExitConfirmOpen(false)} className="rounded-2xl px-6 py-3 border border-gray-200 hover:bg-gray-50 transition font-light text-gray-800">
+                  Keep Playing
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="absolute bottom-6 left-6 z-40 flex items-center gap-3">
           <button onClick={onExit} className="bg-white/80 backdrop-blur border border-gray-200 rounded-2xl px-5 py-3 hover:bg-white transition">
             <span className="text-sm text-gray-800 font-light">Exit</span>
@@ -11064,7 +11144,7 @@ useEffect(() => {
                 )}
 
                 {mode !== "online" && (
-                  <button onClick={goHome} className="rounded-2xl px-6 py-3 border border-gray-200 hover:bg-gray-50 transition font-light text-gray-800">
+                  <button onClick={onExit} className="rounded-2xl px-6 py-3 border border-gray-200 hover:bg-gray-50 transition font-light text-gray-800">
                     Home
                   </button>
                 )}
