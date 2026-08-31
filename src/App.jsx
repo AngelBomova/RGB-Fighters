@@ -3247,6 +3247,12 @@ const toggleFullscreen = async () => {
         hitstunFrames += 30;
       }
 
+      if (defender.blackCharging) {
+        defender.blackCharging = false;
+        defender.blackChargeTimer = 0;
+        hitstunFrames += 30;
+      }
+
       if (defender.brownCharging) {
         defender.brownCharging = false;
         defender.brownChargeTimer = 0;
@@ -7617,7 +7623,7 @@ if (hpW > 0) {
             x: waveX,
             y: groundLevel + 22,
             vx: 0,
-            vy: -13,
+            vy: -6.5,
             owner: p,
             team: p.team,
             type: "yellowwave",
@@ -8334,9 +8340,15 @@ if (p.aiBlockHoldTimer > 0) {
       }
 
       if (p.yellowWaveChargeTimer > 0) {
-        ctx.globalAlpha = 0.35 + Math.sin(Date.now() / 45) * 0.12;
+        const blink = Math.floor(Date.now() / 90) % 2 === 0;
+        ctx.globalAlpha = blink ? 0.88 : 0.42;
         ctx.fillStyle = "#fde047";
-        ctx.fillRect(p.x - 7, drawY - 7, p.width + 14, drawHeight + 14);
+        ctx.fillRect(p.x - 12, drawY - 12, p.width + 24, drawHeight + 24);
+        ctx.strokeStyle = blink ? "#facc15" : "#a16207";
+        ctx.lineWidth = blink ? 8 : 4;
+        ctx.strokeRect(p.x - 16, drawY - 16, p.width + 32, drawHeight + 32);
+        ctx.fillStyle = "rgba(250,204,21,0.42)";
+        ctx.fillRect(p.x - 28, groundLevel - 8, p.width + 56, 8);
         ctx.globalAlpha = 1;
       }
 
@@ -8589,18 +8601,32 @@ if (p.aiBlockHoldTimer > 0) {
       }
 
       if (p.charging) {
-        ctx.globalAlpha = 0.7;
-        ctx.fillStyle = "#1f2937";
+        const pulse = 10 + Math.sin(Date.now() / 55) * 4;
+        ctx.globalAlpha = 0.82;
+        ctx.fillStyle = "rgba(2,6,23,0.62)";
         const chargeSize = Math.min(p.chargeFrames / 10, 20);
-        ctx.fillRect(p.x - chargeSize / 2, drawY - chargeSize / 2, p.width + chargeSize, drawHeight + chargeSize);
+        ctx.fillRect(p.x - chargeSize / 2 - pulse / 2, drawY - chargeSize / 2 - pulse / 2, p.width + chargeSize + pulse, drawHeight + chargeSize + pulse);
+        ctx.strokeStyle = "#f8fafc";
+        ctx.lineWidth = 4;
+        ctx.strokeRect(p.x - chargeSize / 2 - pulse / 2, drawY - chargeSize / 2 - pulse / 2, p.width + chargeSize + pulse, drawHeight + chargeSize + pulse);
+        ctx.strokeStyle = "#020617";
+        ctx.lineWidth = 7;
+        ctx.strokeRect(p.x - chargeSize / 2 - pulse, drawY - chargeSize / 2 - pulse, p.width + chargeSize + pulse * 2, drawHeight + chargeSize + pulse * 2);
         ctx.globalAlpha = 1;
 
         const dmg = 8 + Math.floor(p.chargeFrames / 15);
-        ctx.fillStyle = "#111827";
-        ctx.font = "bold 12px Arial";
+        ctx.font = "bold 16px Arial";
         const txt = `DMG ${dmg}`;
         const tw = ctx.measureText(txt).width;
-        ctx.fillText(txt, p.x + p.width / 2 - tw / 2, drawY - 18);
+        const textX = p.x + p.width / 2 - tw / 2;
+        const textY = drawY - 20;
+        ctx.fillStyle = "rgba(248,250,252,0.92)";
+        ctx.fillRect(textX - 7, textY - 15, tw + 14, 20);
+        ctx.strokeStyle = "#020617";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(textX - 7, textY - 15, tw + 14, 20);
+        ctx.fillStyle = "#020617";
+        ctx.fillText(txt, textX, textY);
       }
 
       if (p.specialDisabled) {
@@ -9030,9 +9056,11 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
           if (proj.type === "greenresidue") {
             proj.lifeFrames--;
             proj.residueTickFrames = proj.residueTickFrames || {};
-            fighters.filter((target) => target.alive && target.team !== proj.team).forEach((target) => {
+            fighters.filter((target) => target.alive).forEach((target) => {
               const standingInPuddle = Math.abs(centerX(target) - proj.x) <= (proj.radius || 60) && Math.abs(target.y + target.height - proj.y) <= 24;
               if (!standingInPuddle) return;
+              target.poisonSlowTimer = Math.max(target.poisonSlowTimer || 0, 14);
+              if (target.team === proj.team) return;
               const nextTick = proj.residueTickFrames[target.id] || 0;
               if (nextTick <= 0) {
                 applyDamage(proj.owner, target, "greenresidue", { attackHeight: "unblockable", isProjectile: true, knockbackDir: 0 });
@@ -9138,6 +9166,22 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 height: proj.height || 92,
               };
               if (!rectOverlap(waveRect, target.hurtbox)) continue;
+              if (target.reflecting) {
+                const oldOwner = proj.owner;
+                const reflectedTarget = oldOwner?.alive ? oldOwner : getNearestEnemy(target);
+                const reflectedX = reflectedTarget ? centerX(reflectedTarget) : centerX(target) + target.facing * 120;
+                proj.owner = target;
+                proj.team = target.team;
+                proj.reflected = true;
+                proj.x = Math.max(30, Math.min(WORLD_W - 30, reflectedX));
+                proj.y = groundLevel + 22;
+                proj.vx = 0;
+                proj.vy = -6.5;
+                proj.knockbackDir = proj.x >= centerX(target) ? 1 : -1;
+                handledProjectile = true;
+                playSfx("reflect");
+                break;
+              }
               applyDamage(proj.owner, target, "yellowwave", {
                 attackHeight: proj.attackHeight,
                 isProjectile: true,
