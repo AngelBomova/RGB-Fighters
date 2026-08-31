@@ -1461,6 +1461,7 @@ const toggleFullscreen = async () => {
         specialDisabledTimer: p.specialDisabledTimer,
         slowedTimer: p.slowedTimer,
         poisonSlowTimer: p.poisonSlowTimer,
+        greenGooSlowTimer: p.greenGooSlowTimer,
         poisoned: p.poisoned,
         poisonTicksLeft: p.poisonTicksLeft,
         poisonTickTimer: p.poisonTickTimer,
@@ -2174,6 +2175,7 @@ const toggleFullscreen = async () => {
         specialDisabledTimer: 0,
         slowedTimer: 0,
         poisonSlowTimer: 0,
+        greenGooSlowTimer: 0,
         poisoned: false,
         poisonTicksLeft: 0,
         poisonTickTimer: 0,
@@ -2567,6 +2569,7 @@ const toggleFullscreen = async () => {
           p.specialDisabledTimer = 0;
           p.slowedTimer = 0;
           p.poisonSlowTimer = 0;
+          p.greenGooSlowTimer = 0;
 
           p.blockDisabled = false;
           p.blockDisabledTimer = 0;
@@ -6790,6 +6793,7 @@ if (hpW > 0) {
         p.specialDisabledTimer = 0;
         p.slowedTimer = 0;
         p.poisonSlowTimer = 0;
+        p.greenGooSlowTimer = 0;
 
         p.blockDisabled = false;
         p.blockDisabledTimer = 0;
@@ -6913,6 +6917,7 @@ if (hpW > 0) {
         p.specialDisabledTimer = 0;
         p.slowedTimer = 0;
         p.poisonSlowTimer = 0;
+        p.greenGooSlowTimer = 0;
 
         p.blockDisabled = false;
         p.blockDisabledTimer = 0;
@@ -7623,7 +7628,7 @@ if (hpW > 0) {
             x: waveX,
             y: groundLevel + 22,
             vx: 0,
-            vy: -6.5,
+            vy: -3.25,
             owner: p,
             team: p.team,
             type: "yellowwave",
@@ -7631,7 +7636,7 @@ if (hpW > 0) {
             color: "rgba(250,204,21,0.9)",
             radius: 30,
             width: 60,
-            height: 120,
+            height: 60,
             knockbackDir: waveX >= centerX(p) ? 1 : -1,
           });
           playSfx("yellow_spear");
@@ -7694,6 +7699,11 @@ if (hpW > 0) {
       if (p.poisonSlowTimer > 0) {
         p.poisonSlowTimer--;
         p.speed *= 0.75;
+      }
+
+      if (p.greenGooSlowTimer > 0) {
+        p.greenGooSlowTimer--;
+        p.speed *= 0.5;
       }
 
       if (p.damageAmpTimer > 0) p.damageAmpTimer--;
@@ -9056,11 +9066,10 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
           if (proj.type === "greenresidue") {
             proj.lifeFrames--;
             proj.residueTickFrames = proj.residueTickFrames || {};
-            fighters.filter((target) => target.alive).forEach((target) => {
+            fighters.filter((target) => target.alive && target.team !== proj.team).forEach((target) => {
               const standingInPuddle = Math.abs(centerX(target) - proj.x) <= (proj.radius || 60) && Math.abs(target.y + target.height - proj.y) <= 24;
               if (!standingInPuddle) return;
-              target.poisonSlowTimer = Math.max(target.poisonSlowTimer || 0, 14);
-              if (target.team === proj.team) return;
+              target.greenGooSlowTimer = Math.max(target.greenGooSlowTimer || 0, 14);
               const nextTick = proj.residueTickFrames[target.id] || 0;
               if (nextTick <= 0) {
                 applyDamage(proj.owner, target, "greenresidue", { attackHeight: "unblockable", isProjectile: true, knockbackDir: 0 });
