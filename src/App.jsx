@@ -1492,6 +1492,8 @@ const toggleFullscreen = async () => {
         special3VisualTimer: p.special3VisualTimer,
         special3RollTimer: p.special3RollTimer,
         special3HasHit: p.special3HasHit,
+        monochromeGrabChargeTimer: p.monochromeGrabChargeTimer,
+        monochromeGrabFacing: p.monochromeGrabFacing,
         yellowWaveChargeTimer: p.yellowWaveChargeTimer,
         yellowWaveTargetX: p.yellowWaveTargetX,
         shotgunVisualTimer: p.shotgunVisualTimer,
@@ -2211,6 +2213,8 @@ const toggleFullscreen = async () => {
         special3VisualTimer: 0,
         special3RollTimer: 0,
         special3HasHit: false,
+        monochromeGrabChargeTimer: 0,
+        monochromeGrabFacing: facing,
         yellowWaveChargeTimer: 0,
         yellowWaveTargetX: 0,
         shotgunVisualTimer: 0,
@@ -2595,6 +2599,8 @@ const toggleFullscreen = async () => {
           p.special3VisualTimer = 0;
           p.special3RollTimer = 0;
           p.special3HasHit = false;
+          p.monochromeGrabChargeTimer = 0;
+          p.monochromeGrabFacing = p.facing;
           p.yellowWaveChargeTimer = 0;
           p.yellowWaveTargetX = 0;
           p.shotgunVisualTimer = 0;
@@ -2755,7 +2761,7 @@ const toggleFullscreen = async () => {
             hitboxHeight = drawHeight;
             break;
           case "monochromegrab":
-            hitboxWidth = 112;
+            hitboxWidth = 190;
             hitboxHeight = drawHeight * 0.48;
             hitboxY = drawY + drawHeight * 0.22;
             break;
@@ -3080,6 +3086,11 @@ const toggleFullscreen = async () => {
           knockback = 0;
           hitstunFrames = 20;
           break;
+        case "monochromegrab":
+          damage = 0;
+          knockback = 0;
+          hitstunFrames = 0;
+          break;
         case "rainbowgrenade":
           damage = 18;
           knockback = 8;
@@ -3253,6 +3264,11 @@ const toggleFullscreen = async () => {
       if (defender.blackCharging) {
         defender.blackCharging = false;
         defender.blackChargeTimer = 0;
+        hitstunFrames += 30;
+      }
+
+      if (defender.monochromeGrabChargeTimer > 0) {
+        defender.monochromeGrabChargeTimer = 0;
         hitstunFrames += 30;
       }
 
@@ -3988,9 +4004,59 @@ const explodeRainbowGrenade = (proj, directTarget = null) => {
   playSfx("chargeball");
 };
 
+const getMonochromeGrabRect = (fighter) => {
+  const dir = fighter.monochromeGrabFacing || fighter.facing || 1;
+  const range = 190;
+  const height = 54;
+  return {
+    x: dir > 0 ? fighter.x + fighter.width : fighter.x - range,
+    y: centerY(fighter) - height / 2,
+    width: range,
+    height,
+    dir,
+    range,
+  };
+};
+
+const releaseMonochromeGrab = (fighter) => {
+  if (!fighter?.alive || fighter.hitstun || fighter.frozen || fighter.spearStunned) return;
+  const grab = getMonochromeGrabRect(fighter);
+  fighter.facing = grab.dir;
+  fighter.attacking = true;
+  fighter.attackType = "monochromegrab";
+  fighter.attackHeight = "unblockable";
+  fighter.attackTimer = 10;
+  const target = fighters
+    .filter((other) => other.alive && other.team !== fighter.team && !other.brownPhasing && !other.transparentBurrowing && rectOverlap(grab, other.hurtbox))
+    .sort((a, b) => Math.abs(centerX(a) - centerX(fighter)) - Math.abs(centerX(b) - centerX(fighter)))[0];
+  if (!target) {
+    playSfx("sweep");
+    return;
+  }
+  const wasHitstunned = fighter.hitstun;
+  applyDamage(fighter, target, "monochromegrab", { attackHeight: "unblockable", knockbackDir: fighter.facing });
+  if (wasHitstunned || fighter.hitstun || !target.alive) return;
+  const fistX = grab.dir > 0 ? fighter.x + fighter.width + grab.range : fighter.x - grab.range;
+  target.x = Math.max(0, Math.min(WORLD_W - target.width, fistX - target.width / 2));
+  target.y = Math.max(0, Math.min(groundLevel - target.height, centerY(fighter) - target.height / 2));
+  target.thrownById = fighter.id;
+  target.thrownLandingPending = true;
+  target.thrownDirection = grab.dir;
+  target.vx = grab.dir * 22;
+  target.vy = -17;
+  target.grounded = false;
+  target.hitstun = true;
+  target.hitstunTimer = 180;
+  target.attacking = false;
+  target.attackTimer = 0;
+  target.attackType = "";
+  target.attackHeight = "";
+  playSfx("sweep");
+};
+
 const beginSpecial3 = (fighter, targetOverride = null) => {
   const target = targetOverride || getNearestEnemy(fighter);
-  if (!fighter.alive || fighter.specialDisabled || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging || fighter.blackCharging || fighter.pinkParrying || fighter.brownPhasing || fighter.brownCharging || fighter.transparentBurrowing) return false;
+  if (!fighter.alive || fighter.specialDisabled || fighter.frozen || fighter.hitstun || fighter.spearStunned || fighter.spearLocked || fighter.reflecting || fighter.purpleCharging || fighter.orangeCharging || fighter.blackCharging || fighter.monochromeGrabChargeTimer > 0 || fighter.pinkParrying || fighter.brownPhasing || fighter.brownCharging || fighter.transparentBurrowing) return false;
 
   if (fighter.type === "pink" && fighter.pinkTeleportMarker) {
     if (fighter.pinkTeleportArmTimer > 0) return false;
@@ -4173,26 +4239,11 @@ const beginSpecial3 = (fighter, targetOverride = null) => {
   }
 
   if (fighter.type === "monochrome") {
-    const inFront = fighter.facing > 0 ? centerX(target) >= centerX(fighter) : centerX(target) <= centerX(fighter);
-    if (!inFront || Math.abs(centerX(target) - centerX(fighter)) > 105 || Math.abs(centerY(target) - centerY(fighter)) > 55) return false;
-    const wasHitstunned = fighter.hitstun;
-    fighter.attacking = true;
-    fighter.attackType = "monochromegrab";
-    fighter.attackHeight = "unblockable";
-    fighter.attackTimer = 10;
-    applyDamage(fighter, target, "monochromegrab", { attackHeight: "unblockable", knockbackDir: fighter.facing });
-    if (!wasHitstunned && !fighter.hitstun) {
-      target.thrownById = fighter.id;
-      target.thrownLandingPending = true;
-      target.thrownDirection = fighter.facing;
-      target.vx = fighter.facing * 18;
-      target.vy = -15;
-      target.grounded = false;
-      target.hitstun = true;
-      target.hitstunTimer = 180;
-      playSfx("sweep");
-    }
+    fighter.monochromeGrabChargeTimer = 30;
+    fighter.monochromeGrabFacing = fighter.facing;
+    fighter.vx = 0;
     startSpecial3Cooldown(fighter, 4000);
+    playSfx("charge_start");
     return true;
   }
 
@@ -5757,7 +5808,7 @@ const tryAiAbility = (ai, opp, sameLane, incoming, options = {}) => {
   const thirdMoveContext =
     (ai.type === "fire" && opp.y + opp.height <= ai.y + 22 && dx < 105) ||
     (ai.type === "psychic" && sameLane && dx < 360) ||
-    (ai.type === "monochrome" && sameLane && dx < 110) ||
+    (ai.type === "monochrome" && sameLane && dx < 195) ||
     (ai.type === "gray" && sameLane && dx < 95) ||
     (ai.type === "explosion" && (!ai.grounded || centerY(opp) > centerY(ai))) ||
     (ai.type === "pink" && ai.pinkTeleportMarker && ai.pinkTeleportArmTimer <= 0) ||
@@ -6186,7 +6237,7 @@ const updateAI = (ai) => {
     return;
   }
 
-  if (ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging || ai.blackCharging) {
+  if (ai.spearLocked || ai.reflecting || ai.purpleCharging || ai.orangeCharging || ai.blackCharging || ai.monochromeGrabChargeTimer > 0) {
     stopDefense(ai);
     ai.vx = 0;
     return;
@@ -6813,6 +6864,8 @@ if (hpW > 0) {
         p.special3VisualTimer = 0;
         p.special3RollTimer = 0;
         p.special3HasHit = false;
+        p.monochromeGrabChargeTimer = 0;
+        p.monochromeGrabFacing = p.facing;
         p.yellowWaveChargeTimer = 0;
         p.yellowWaveTargetX = 0;
         p.shotgunVisualTimer = 0;
@@ -6937,6 +6990,8 @@ if (hpW > 0) {
         p.special3VisualTimer = 0;
         p.special3RollTimer = 0;
         p.special3HasHit = false;
+        p.monochromeGrabChargeTimer = 0;
+        p.monochromeGrabFacing = p.facing;
         p.yellowWaveChargeTimer = 0;
         p.yellowWaveTargetX = 0;
         p.shotgunVisualTimer = 0;
@@ -7096,7 +7151,7 @@ if (hpW > 0) {
         return;
       }
 
-      if (p.spearLocked || p.reflecting || p.purpleCharging || p.orangeCharging || p.blackCharging || p.pinkParrying || p.brownPhasing || p.brownCharging) {
+      if (p.spearLocked || p.reflecting || p.purpleCharging || p.orangeCharging || p.blackCharging || p.monochromeGrabChargeTimer > 0 || p.pinkParrying || p.brownPhasing || p.brownCharging) {
         p.vx = 0;
         p.blocking = false;
         if (!p.pinkParrying) p.ducking = false;
@@ -7605,6 +7660,22 @@ if (hpW > 0) {
       if (p.pinkTeleportExplosionTimer > 0) p.pinkTeleportExplosionTimer--;
       p.snowflakeExpiries = (p.snowflakeExpiries || []).filter((expiry) => expiry > Date.now());
 
+      if (p.monochromeGrabChargeTimer > 0) {
+        p.monochromeGrabChargeTimer--;
+        p.vx = 0;
+        p.blocking = false;
+        p.ducking = false;
+        p.attacking = false;
+        p.attackTimer = 0;
+        p.attackType = "";
+        p.attackHeight = "";
+        if (!p.alive || p.hitstun || p.frozen || p.spearStunned) {
+          p.monochromeGrabChargeTimer = 0;
+        } else if (p.monochromeGrabChargeTimer <= 0) {
+          releaseMonochromeGrab(p);
+        }
+      }
+
       if (p.special3RollTimer > 0) {
         p.special3RollTimer--;
         p.vx = p.facing * 10;
@@ -7678,7 +7749,7 @@ if (hpW > 0) {
         markKOIfNeeded(p);
         playSfx("hit");
       } else if (p.thrownLandingPending) {
-        p.vx = (p.thrownDirection || 1) * 18;
+        p.vx = (p.thrownDirection || 1) * 22;
       }
 
       if (p.speedBoostTimer > 0) {
@@ -8349,6 +8420,21 @@ if (p.aiBlockHoldTimer > 0) {
         ctx.stroke();
       }
 
+      if (p.monochromeGrabChargeTimer > 0) {
+        const grab = getMonochromeGrabRect(p);
+        const blink = Math.floor(Date.now() / 85) % 2 === 0;
+        ctx.globalAlpha = blink ? 0.74 : 0.34;
+        ctx.fillStyle = blink ? "rgba(248,250,252,0.38)" : "rgba(2,6,23,0.34)";
+        ctx.fillRect(grab.x, grab.y, grab.width, grab.height);
+        ctx.strokeStyle = blink ? "#f8fafc" : "#020617";
+        ctx.lineWidth = blink ? 6 : 4;
+        ctx.strokeRect(grab.x, grab.y, grab.width, grab.height);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = blink ? "#020617" : "#f8fafc";
+        ctx.lineWidth = 5;
+        ctx.strokeRect(p.x - 12, drawY - 12, p.width + 24, drawHeight + 24);
+      }
+
       if (p.yellowWaveChargeTimer > 0) {
         const blink = Math.floor(Date.now() / 90) % 2 === 0;
         ctx.globalAlpha = blink ? 0.88 : 0.42;
@@ -8806,7 +8892,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
     const dir = p.facing > 0 ? 1 : -1;
     const armStartX = p.facing > 0 ? p.x + p.width - 2 : p.x + 2;
     const armY = drawY + drawHeight * 0.42;
-    const armEndX = armStartX + dir * 104;
+    const armEndX = armStartX + dir * Math.max(104, p.hitbox.width - 6);
     ctx.lineCap = "round";
     ctx.strokeStyle = "#020617";
     ctx.lineWidth = 18;
