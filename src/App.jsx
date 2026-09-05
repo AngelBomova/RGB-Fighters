@@ -3082,7 +3082,7 @@ const toggleFullscreen = async () => {
           hitstunFrames = 12;
           break;
         case "monochromethrow":
-          damage = 17;
+          damage = 17; // might nerf
           knockback = 0;
           hitstunFrames = 20;
           break;
