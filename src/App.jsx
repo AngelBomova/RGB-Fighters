@@ -2963,6 +2963,7 @@ const toggleFullscreen = async () => {
       if (!defender.alive) return 0;
       if (defender.brownPhasing) return 0;
       if (defender.brownInvulnTimer > 0) return 0;
+      if (defender.monochromeGrabChargeTimer > 0) return 0;
       if (defender.transparentBurrowing) return 0;
       if (defender.type === "rainbow" && defender.rainbowTurretTimer > 0 && !extra.ignoreRainbowInvulnerable) return 0;
       if (attackType === "iceball" && defender.frozen) return 0;
@@ -4027,7 +4028,7 @@ const releaseMonochromeGrab = (fighter) => {
   fighter.attackHeight = "unblockable";
   fighter.attackTimer = 10;
   const target = fighters
-    .filter((other) => other.alive && other.team !== fighter.team && !other.brownPhasing && !other.transparentBurrowing && rectOverlap(grab, other.hurtbox))
+    .filter((other) => other.alive && other.team !== fighter.team && !other.brownPhasing && other.monochromeGrabChargeTimer <= 0 && !other.transparentBurrowing && rectOverlap(grab, other.hurtbox))
     .sort((a, b) => Math.abs(centerX(a) - centerX(fighter)) - Math.abs(centerX(b) - centerX(fighter)))[0];
   if (!target) {
     playSfx("sweep");
@@ -7937,7 +7938,7 @@ if (p.aiBlockHoldTimer > 0) {
       if (p.poisoned && p.poisonTicksLeft > 0) {
         p.poisonTickTimer--;
         if (p.poisonTickTimer <= 0) {
-          if (!(p.type === "rainbow" && p.rainbowTurretTimer > 0) && p.brownInvulnTimer <= 0) {
+          if (!(p.type === "rainbow" && p.rainbowTurretTimer > 0) && p.brownInvulnTimer <= 0 && p.monochromeGrabChargeTimer <= 0) {
             if (p.brownOriginalForm) {
               p.brownMorphHealth -= 1;
               if (p.brownMorphHealth <= 0) restoreBrownForm(p);
@@ -9302,6 +9303,7 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
               }
 
               if (target.brownInvulnTimer > 0) {
+                if (proj.type === "brownshift") continue;
                 if (proj.type === "yellowspear" && proj.owner) proj.owner.spearLocked = false;
                 projectiles.current.splice(i, 1);
                 handledProjectile = true;
@@ -9351,6 +9353,12 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 });
                 if (!blocked && proj.owner?.type === "brown") morphBrownInto(proj.owner, target);
               } else if (proj.type === "chargeball") {
+                if (target.monochromeGrabChargeTimer > 0) {
+                  playSfx("block");
+                  projectiles.current.splice(i, 1);
+                  handledProjectile = true;
+                  break;
+                }
                 breakSpearStunIfNeeded(target);
                 breakFreezeIfNeeded(target);
 
@@ -9400,13 +9408,14 @@ ctx.strokeRect(p.x + 2, drawY + 2, p.width - 4, drawHeight - 4);
                 });
               } else if (proj.type === "yellowspear") {
                 const blocked = canBlockAttack(proj.owner, target, "yellowspear", proj.attackHeight);
+                const chargeInvulnerable = target.monochromeGrabChargeTimer > 0;
                 applyDamage(proj.owner, target, "yellowspear", {
                   attackHeight: proj.attackHeight,
                   isProjectile: true,
                   knockbackDir: 0,
                 });
                 if (proj.owner) proj.owner.spearLocked = false;
-                if (!blocked && proj.owner) {
+                if (!blocked && !chargeInvulnerable && proj.owner) {
                   const dir = proj.owner.facing || 1;
                   target.x = Math.max(0, Math.min(WORLD_W - target.width, dir > 0 ? proj.owner.x + proj.owner.width + 14 : proj.owner.x - target.width - 14));
                   target.y = Math.min(target.y, groundLevel - target.height);
